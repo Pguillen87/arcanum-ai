@@ -1,0 +1,246 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Cosmic light mode - white-gold-violet */
+    --background: 280 40% 98%;
+    --foreground: 270 60% 15%;
+
+    --card: 280 30% 96%;
+    --card-foreground: 270 60% 15%;
+
+    --popover: 280 30% 96%;
+    --popover-foreground: 270 60% 15%;
+
+    --primary: 270 70% 60%;
+    --primary-foreground: 280 40% 98%;
+
+    --secondary: 45 90% 60%;
+    --secondary-foreground: 270 60% 15%;
+
+    --muted: 280 20% 90%;
+    --muted-foreground: 270 30% 40%;
+
+    --accent: 45 90% 60%;
+    --accent-foreground: 270 60% 15%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 280 40% 98%;
+
+    --border: 280 20% 85%;
+    --input: 280 20% 85%;
+    --ring: 270 70% 60%;
+
+    --radius: 1rem;
+
+    /* Cosmic gradients */
+    --gradient-cosmic: linear-gradient(135deg, hsl(270 70% 60%) 0%, hsl(45 90% 60%) 100%);
+    --gradient-aurora: linear-gradient(180deg, hsl(270 70% 60% / 0.1) 0%, hsl(270 70% 60% / 0) 100%);
+    --gradient-orb: radial-gradient(circle at 50% 50%, hsl(270 70% 60% / 0.4) 0%, hsl(270 70% 60% / 0) 70%);
+    
+    /* Glow effects */
+    --glow-violet: 0 0 40px hsl(270 70% 60% / 0.5);
+    --glow-gold: 0 0 40px hsl(45 90% 60% / 0.5);
+    
+    /* Transitions */
+    --transition-cosmic: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dark {
+    /* Cosmic dark mode - violet-dark theme */
+    --background: 270 60% 8%;
+    --foreground: 280 40% 95%;
+
+    --card: 270 50% 12%;
+    --card-foreground: 280 40% 95%;
+
+    --popover: 270 50% 12%;
+    --popover-foreground: 280 40% 95%;
+
+    --primary: 270 70% 60%;
+    --primary-foreground: 280 40% 98%;
+
+    --secondary: 45 90% 60%;
+    --secondary-foreground: 270 60% 10%;
+
+    --muted: 270 40% 18%;
+    --muted-foreground: 280 20% 65%;
+
+    --accent: 45 90% 60%;
+    --accent-foreground: 270 60% 10%;
+
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 280 40% 98%;
+
+    --border: 270 40% 20%;
+    --input: 270 40% 20%;
+    --ring: 270 70% 60%;
+
+    /* Enhanced cosmic gradients for dark mode */
+    --gradient-cosmic: linear-gradient(135deg, hsl(270 70% 60%) 0%, hsl(45 90% 60%) 100%);
+    --gradient-aurora: linear-gradient(180deg, hsl(270 70% 60% / 0.15) 0%, hsl(270 70% 60% / 0) 100%);
+    --gradient-orb: radial-gradient(circle at 50% 50%, hsl(270 70% 60% / 0.6) 0%, hsl(270 70% 60% / 0) 70%);
+    
+    /* Enhanced glow effects for dark mode */
+    --glow-violet: 0 0 60px hsl(270 70% 60% / 0.8), 0 0 100px hsl(270 70% 60% / 0.4);
+    --glow-gold: 0 0 60px hsl(45 90% 60% / 0.8), 0 0 100px hsl(45 90% 60% / 0.4);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "cv11", "ss01";
+  }
+
+  /* Initialize dark mode by default */
+  html {
+    color-scheme: dark;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  html.light {
+    color-scheme: light;
+  }
+}
+
+@layer components {
+  /* Cosmic utilities */
+  .cosmic-glow {
+    box-shadow: var(--glow-violet);
+    transition: var(--transition-cosmic);
+  }
+
+  .cosmic-glow:hover {
+    box-shadow: var(--glow-violet), var(--glow-gold);
+  }
+
+  .gradient-cosmic {
+    background: var(--gradient-cosmic);
+  }
+
+  .gradient-orb {
+    background: var(--gradient-orb);
+  }
+
+  /* Rune pulse animation */
+  @keyframes rune-pulse {
+    0%, 100% {
+      box-shadow: 0 0 20px hsl(var(--primary) / 0.6);
+    }
+    50% {
+      box-shadow: 0 0 40px hsl(var(--primary) / 1), 0 0 60px hsl(var(--primary) / 0.5);
+    }
+  }
+
+  .animate-rune-pulse {
+    animation: rune-pulse 2s ease-in-out infinite;
+  }
+
+  /* Rune shatter animation */
+  @keyframes rune-shatter {
+    0% {
+      transform: scale(1) rotate(0deg);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(0.2) rotate(360deg);
+      opacity: 0;
+    }
+  }
+
+  .animate-rune-shatter {
+    animation: rune-shatter 0.8s ease-out forwards;
+  }
+
+  /* Rune reform animation */
+  @keyframes rune-reform {
+    0% {
+      transform: scale(0.5);
+      opacity: 0;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
+
+  .animate-rune-reform {
+    animation: rune-reform 0.6s ease-out forwards;
+  }
+
+  /* Pulse animation */
+  @keyframes cosmic-pulse {
+    0%, 100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.8;
+      transform: scale(1.05);
+    }
+  }
+
+  .animate-cosmic-pulse {
+    animation: cosmic-pulse 3s ease-in-out infinite;
+  }
+
+  /* Glow pulse animation */
+  @keyframes glow-pulse {
+    0%, 100% {
+      box-shadow: var(--glow-violet);
+    }
+    50% {
+      box-shadow: var(--glow-violet), var(--glow-gold);
+    }
+  }
+
+  .animate-glow-pulse {
+    animation: glow-pulse 4s ease-in-out infinite;
+  }
+
+  /* Fade in animation */
+  @keyframes fade-in {
+    0% {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    100% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.6s ease-out;
+  }
+
+  /* Translucent glass effect */
+  .glass-cosmic {
+    background: hsl(var(--card) / 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid hsl(var(--border) / 0.3);
+  }
+
+  /* Orb style */
+  .orb {
+    @apply relative rounded-full aspect-square;
+    @apply flex items-center justify-center;
+    @apply glass-cosmic cosmic-glow;
+    @apply transition-all duration-500;
+    @apply hover:scale-110 hover:-translate-y-2;
+  }
+}
