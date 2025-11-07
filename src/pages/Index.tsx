@@ -2,6 +2,7 @@ import { useState } from "react";
 import { OrbNavigation } from "@/components/orb-navigation";
 import { HeroSection } from "@/components/hero-section";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { UserMenu } from "@/components/auth/UserMenu";
 import { FloatingRunes } from "@/components/animations/FloatingRunes";
 import { PortalTransition } from "@/components/animations/PortalTransition";
 import { EssenciaPortal } from "@/features/essencia/EssenciaPortal";
@@ -34,8 +35,9 @@ const Index = () => {
         />
       </div>
 
-      {/* Theme Toggle */}
-      <div className="fixed top-6 right-6 z-50">
+      {/* User Menu & Theme Toggle */}
+      <div className="fixed top-6 right-6 z-50 flex items-center gap-4">
+        <UserMenu />
         <ThemeToggle />
       </div>
 

@@ -1,15 +1,98 @@
+import { useState, useEffect } from "react";
 import { PortalContainer } from "@/components/portals/PortalContainer";
 import { CosmicCard } from "@/components/cosmic/CosmicCard";
 import { CosmicButton } from "@/components/cosmic/CosmicButton";
 import { Shield, AlertTriangle, Settings, CheckCircle } from "lucide-react";
 import { RuneIcon } from "@/components/cosmic/RuneIcon";
-import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { ProtectionSettings } from "@/types/auth";
 
 interface ProtecaoPortalProps {
   onClose: () => void;
 }
 
 export const ProtecaoPortal = ({ onClose }: ProtecaoPortalProps) => {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(true);
+  const [autoModeration, setAutoModeration] = useState(true);
+  const [offensiveFilter, setOffensiveFilter] = useState(true);
+  const [brandVerification, setBrandVerification] = useState(true);
+
+  // Load user's protection settings
+  useEffect(() => {
+    if (user) {
+      loadSettings();
+    }
+  }, [user]);
+
+  const loadSettings = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('protection_settings')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        setAutoModeration(data.auto_moderation);
+        setOffensiveFilter(data.offensive_filter);
+        setBrandVerification(data.brand_verification);
+      }
+    } catch (error) {
+      console.error('Error loading settings:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const updateSetting = async (field: keyof ProtectionSettings, value: boolean) => {
+    if (!user) return;
+
+    try {
+      const { error } = await supabase
+        .from('protection_settings')
+        .update({ [field]: value })
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Configuração atualizada',
+        description: 'Suas preferências foram salvas com sucesso.',
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao atualizar',
+        description: error.message,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleAutoModerationChange = (checked: boolean) => {
+    setAutoModeration(checked);
+    updateSetting('auto_moderation', checked);
+  };
+
+  const handleOffensiveFilterChange = (checked: boolean) => {
+    setOffensiveFilter(checked);
+    updateSetting('offensive_filter', checked);
+  };
+
+  const handleBrandVerificationChange = (checked: boolean) => {
+    setBrandVerification(checked);
+    updateSetting('brand_verification', checked);
+  };
+
   return (
     <PortalContainer title="Proteção - Escudo Dimensional" onClose={onClose}>
       <div className="grid gap-6 md:gap-8">
@@ -48,45 +131,75 @@ export const ProtecaoPortal = ({ onClose }: ProtecaoPortalProps) => {
             <div className="flex items-center gap-3">
               <RuneIcon icon={Settings} size="sm" />
               <p className="text-sm text-muted-foreground">
-                Defina palavras proibidas e temas sensíveis para moderação automática
+                Ative ou desative proteções de acordo com suas necessidades
               </p>
             </div>
 
             <div className="space-y-3">
+              {/* Moderação Automática */}
               <div className="p-4 glass-cosmic rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-sm">Moderação Automática</h4>
-                  <Badge className="bg-green-500/20 text-green-500">Ativo</Badge>
+                  <div className="flex-1">
+                    <Label htmlFor="auto-moderation" className="font-semibold text-sm cursor-pointer">
+                      Moderação Automática
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      IA analisa conteúdo antes da publicação
+                    </p>
+                  </div>
+                  <Switch
+                    id="auto-moderation"
+                    checked={autoModeration}
+                    onCheckedChange={handleAutoModerationChange}
+                    disabled={loading}
+                  />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  IA analisa conteúdo antes da publicação
-                </p>
               </div>
 
+              {/* Filtro de Linguagem Ofensiva */}
               <div className="p-4 glass-cosmic rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-sm">Filtro de Linguagem Ofensiva</h4>
-                  <Badge className="bg-green-500/20 text-green-500">Ativo</Badge>
+                  <div className="flex-1">
+                    <Label htmlFor="offensive-filter" className="font-semibold text-sm cursor-pointer">
+                      Filtro de Linguagem Ofensiva
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Bloqueia palavras e frases inapropriadas
+                    </p>
+                  </div>
+                  <Switch
+                    id="offensive-filter"
+                    checked={offensiveFilter}
+                    onCheckedChange={handleOffensiveFilterChange}
+                    disabled={loading}
+                  />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Bloqueia palavras e frases inapropriadas
-                </p>
               </div>
 
+              {/* Verificação de Marca */}
               <div className="p-4 glass-cosmic rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-sm">Verificação de Marca</h4>
-                  <Badge className="bg-green-500/20 text-green-500">Ativo</Badge>
+                  <div className="flex-1">
+                    <Label htmlFor="brand-verification" className="font-semibold text-sm cursor-pointer">
+                      Verificação de Marca
+                    </Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Garante alinhamento com diretrizes da marca
+                    </p>
+                  </div>
+                  <Switch
+                    id="brand-verification"
+                    checked={brandVerification}
+                    onCheckedChange={handleBrandVerificationChange}
+                    disabled={loading}
+                  />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Garante alinhamento com diretrizes da marca
-                </p>
               </div>
             </div>
 
             <CosmicButton variant="outline" className="w-full">
               <Settings className="w-4 h-4 mr-2" />
-              Configurar Filtros
+              Configurações Avançadas
             </CosmicButton>
           </div>
         </CosmicCard>

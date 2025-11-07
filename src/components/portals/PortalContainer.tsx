@@ -1,6 +1,6 @@
 import { motion, useMotionValue, useTransform, PanInfo } from "framer-motion";
 import { X } from "lucide-react";
-import { CosmicButton } from "@/components/cosmic/CosmicButton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface PortalContainerProps {
   title: string;
@@ -43,14 +43,29 @@ export const PortalContainer = ({ title, onClose, children }: PortalContainerPro
         <h1 className="text-2xl md:text-4xl font-bold bg-gradient-cosmic bg-clip-text text-transparent">
           {title}
         </h1>
-        <CosmicButton
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          className="text-foreground hover:text-primary"
-        >
-          <X className="w-6 h-6" />
-        </CosmicButton>
+        
+        {/* Close Button */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              onClick={onClose}
+              className="group relative"
+            >
+              <div className="relative">
+                {/* Glow effect */}
+                <div className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-40 blur-xl transition-all duration-300" style={{ background: "var(--gradient-cosmic)" }} />
+                
+                {/* Main circle */}
+                <div className="relative w-10 h-10 md:w-12 md:h-12 rounded-full border border-white/20 backdrop-blur-xl bg-black/30 flex items-center justify-center group-hover:scale-110 group-hover:rotate-90 group-hover:border-white/40 transition-all duration-300 group-hover:shadow-lg">
+                  <X className="w-5 h-5 md:w-6 md:h-6 text-white group-hover:text-purple-300 transition-colors" />
+                </div>
+              </div>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Fechar</p>
+          </TooltipContent>
+        </Tooltip>
       </motion.div>
 
       {/* Content */}

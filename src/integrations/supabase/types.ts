@@ -1543,6 +1543,60 @@ export type Database = {
         }
         Relationships: []
       }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string | null
+          full_name: string | null
+          id: string
+          updated_at: string | null
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string | null
+          full_name?: string | null
+          id: string
+          updated_at?: string | null
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string | null
+          full_name?: string | null
+          id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      protection_settings: {
+        Row: {
+          auto_moderation: boolean | null
+          brand_verification: boolean | null
+          created_at: string | null
+          id: string
+          offensive_filter: boolean | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          auto_moderation?: boolean | null
+          brand_verification?: boolean | null
+          created_at?: string | null
+          id?: string
+          offensive_filter?: boolean | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          auto_moderation?: boolean | null
+          brand_verification?: boolean | null
+          created_at?: string | null
+          id?: string
+          offensive_filter?: boolean | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       retention_policies: {
         Row: {
           created_at: string
@@ -1898,6 +1952,27 @@ export type Database = {
           },
         ]
       }
+      user_roles: {
+        Row: {
+          created_at: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           created_at: string
@@ -1955,7 +2030,13 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
       AgentIntegrationRole:
@@ -1966,6 +2047,7 @@ export type Database = {
         | "other"
       AgentStatus: "active" | "inactive"
       AgentType: "PERSONAL" | "ENTERPRISE"
+      app_role: "admin" | "moderator" | "user"
       AuditActionType:
         | "create"
         | "update"
@@ -2140,6 +2222,7 @@ export const Constants = {
       ],
       AgentStatus: ["active", "inactive"],
       AgentType: ["PERSONAL", "ENTERPRISE"],
+      app_role: ["admin", "moderator", "user"],
       AuditActionType: [
         "create",
         "update",
