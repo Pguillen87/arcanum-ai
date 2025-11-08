@@ -128,8 +128,8 @@ const Auth = () => {
         <div className="text-center mb-8 space-y-4">
           <div className="inline-flex items-center justify-center gap-2 mb-2">
             <Sparkles className="w-8 h-8 text-primary animate-pulse" />
-            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-cosmic bg-clip-text text-transparent">
-              Arcanum AI
+            <h1 className="text-3xl md:text-4xl font-bold text-foreground drop-shadow-[0_0_20px_rgba(168,85,247,0.5)]">
+              GuillenIA
             </h1>
             <Sparkles className="w-8 h-8 text-secondary animate-pulse" style={{ animationDelay: "0.5s" }} />
           </div>
@@ -214,6 +214,17 @@ const Auth = () => {
                 </div>
 
                 <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      id="remember"
+                      className="w-4 h-4 rounded border-border bg-background checked:bg-primary checked:border-primary focus:ring-2 focus:ring-primary focus:ring-offset-0 cursor-pointer"
+                    />
+                    <Label htmlFor="remember" className="cursor-pointer text-muted-foreground">
+                      Lembrar senha
+                    </Label>
+                  </div>
+
                   <CosmicButton
                     type="submit"
                     mystical
@@ -225,10 +236,10 @@ const Auth = () => {
                     {isLoginSubmitting ? "Abrindo o Portal..." : "Entrar"}
                   </CosmicButton>
 
-                  <div className="flex items-center justify-between text-xs">
+                  <div className="text-center">
                     <Link 
                       to="#" 
-                      className="text-primary hover:text-primary/80 transition-colors"
+                      className="text-xs text-primary hover:text-primary/80 transition-colors"
                       onClick={(e) => {
                         e.preventDefault();
                         toast({
