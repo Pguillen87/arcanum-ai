@@ -24,6 +24,7 @@ const passwordSchema = z
 const loginSchema = z.object({
   login: z.string().min(1, "Email ou nome de usuário obrigatório"),
   password: passwordSchema,
+  rememberMe: z.boolean().optional(),
 });
 
 const signupSchema = z
