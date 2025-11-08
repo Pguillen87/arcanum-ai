@@ -213,7 +213,7 @@ const Auth = () => {
                   )}
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
@@ -264,7 +264,7 @@ const Auth = () => {
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full h-12 gap-3 glass-cosmic hover:bg-primary/10 transition-all"
+                    className="w-full h-14 gap-3 glass-cosmic hover:bg-primary/10 transition-all text-base"
                     onClick={() => {
                       toast({
                         title: "Google OAuth",
