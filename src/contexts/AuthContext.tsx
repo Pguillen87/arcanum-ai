@@ -3,13 +3,18 @@ import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { Profile } from '@/types/auth';
 import { useToast } from '@/hooks/use-toast';
+import { Observability } from '@/lib/observability';
+import { authService, isEmail } from '@/services/authService';
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
-  signInWithEmail: (email: string, password: string) => Promise<{ error: any }>;
+  signInWithEmail: (email: string, password: string, persistSession?: boolean) => Promise<{ error: any }>;
+  signInWithUsername: (username: string, password: string, persistSession?: boolean) => Promise<{ error: any }>;
+  signIn: (login: string, password: string, persistSession?: boolean) => Promise<{ error: any }>; // Heurística automática
+  signInWithGoogle: (redirectTo?: string) => Promise<{ error: any }>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   updateProfile: (fullName: string) => Promise<{ error: any }>;
@@ -36,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) throw error;
       setProfile(data);
     } catch (error) {
-      console.error('Error loading profile:', error);
+      Observability.trackError(error);
     }
   };
 
@@ -72,17 +77,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signInWithEmail = async (email: string, password: string) => {
+  const signInWithEmail = async (email: string, password: string, persistSession: boolean = true) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const { data, error } = await authService.signInWithEmail(email, password, persistSession);
 
       if (error) {
         toast({
           title: 'Erro ao fazer login',
-          description: error.message,
+          description: error.message || 'Credenciais inválidas',
           variant: 'destructive',
         });
         return { error };
@@ -96,32 +98,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error: any) {
       toast({
         title: 'Erro ao fazer login',
-        description: error.message,
+        description: error.message || 'Erro desconhecido',
         variant: 'destructive',
       });
       return { error };
     }
   };
 
+  const signInWithUsername = async (username: string, password: string, persistSession: boolean = true) => {
+    try {
+      const { data, error } = await authService.signInWithUsername(username, password, persistSession);
+
+      if (error) {
+        toast({
+          title: 'Erro ao fazer login',
+          description: error.message || 'Credenciais inválidas',
+          variant: 'destructive',
+        });
+        return { error };
+      }
+
+      toast({
+        title: 'Login realizado com sucesso!',
+        description: 'Bem-vindo de volta.',
+      });
+      return { error: null };
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao fazer login',
+        description: error.message || 'Erro desconhecido',
+        variant: 'destructive',
+      });
+      return { error };
+    }
+  };
+
+  // Heurística automática: email ou username
+  const signIn = async (login: string, password: string, persistSession: boolean = true) => {
+    if (isEmail(login)) {
+      return signInWithEmail(login, password, persistSession);
+    } else {
+      return signInWithUsername(login, password, persistSession);
+    }
+  };
+
+  const signInWithGoogle = async (redirectTo?: string) => {
+    try {
+      const { error } = await authService.signInWithGoogle(redirectTo);
+
+      if (error) {
+        toast({
+          title: 'Erro ao iniciar login com Google',
+          description: error.message || 'Não foi possível conectar com Google',
+          variant: 'destructive',
+        });
+        return { error };
+      }
+
+      // OAuth redireciona, então não mostramos toast de sucesso aqui
+      return { error: null };
+    } catch (error: any) {
+      toast({
+        title: 'Erro ao iniciar login com Google',
+        description: error.message || 'Erro desconhecido',
+        variant: 'destructive',
+      });
+      return { error };
+    }
+  };
+
+  const isUsernameAvailable = async (username: string) => {
+    return authService.isUsernameAvailable(username);
+  };
+
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
-      const redirectUrl = `${window.location.origin}/`;
-      
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          emailRedirectTo: redirectUrl,
-          data: {
-            full_name: fullName,
-          },
-        },
-      });
+      const { data, error } = await authService.signUp(email, password, fullName);
 
       if (error) {
         toast({
           title: 'Erro ao criar conta',
-          description: error.message,
+          description: error.message || 'Não foi possível criar a conta',
           variant: 'destructive',
         });
         return { error };
@@ -135,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error: any) {
       toast({
         title: 'Erro ao criar conta',
-        description: error.message,
+        description: error.message || 'Erro desconhecido',
         variant: 'destructive',
       });
       return { error };
@@ -146,6 +203,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
+      // Limpa caches e storage relevantes (sem PII)
+      try {
+        // Cache Storage
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+        // LocalStorage preferences
+        ['arcanoMentorPrefs','high_contrast','modo_suave','locale','mysticalLanguage','theme'].forEach((k) => {
+          try { localStorage.removeItem(k); } catch {}
+        });
+      } catch {}
       
       toast({
         title: 'Logout realizado',
@@ -196,6 +263,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         loading,
         signInWithEmail,
+        signInWithUsername,
+        signIn,
+        signInWithGoogle,
         signUp,
         signOut,
         updateProfile,

@@ -6,6 +6,7 @@ import { CosmicCard } from "@/components/cosmic/CosmicCard";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Mail, Lock, User } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm } from "react-hook-form";
@@ -21,7 +22,7 @@ const passwordSchema = z
   );
 
 const loginSchema = z.object({
-  email: z.string().email("Email inválido"),
+  login: z.string().min(1, "Email ou nome de usuário obrigatório"),
   password: passwordSchema,
 });
 
@@ -42,11 +43,13 @@ type SignupForm = z.infer<typeof signupSchema>;
 
 const Auth = () => {
   const [isLogin, setIsLogin] = useState(true);
-  const { signInWithEmail, signUp, user } = useAuth();
+  const { signIn, signInWithGoogle, signUp, user } = useAuth();
   const navigate = useNavigate();
-  const emailInputRef = useRef<HTMLInputElement | null>(null);
+  const loginInputRef = useRef<HTMLInputElement | null>(null);
   const signupNameRef = useRef<HTMLInputElement | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   const {
     register: registerLogin,
@@ -69,7 +72,7 @@ const Auth = () => {
   // Focus inicial acessível
   useEffect(() => {
     if (isLogin) {
-      emailInputRef.current?.focus();
+      loginInputRef.current?.focus();
     } else {
       signupNameRef.current?.focus();
     }
@@ -83,12 +86,25 @@ const Auth = () => {
 
   const onLoginSubmit = async (data: LoginForm) => {
     setAuthError(null);
-    const { error } = await signInWithEmail(data.email, data.password);
+    // Se "Lembrar senha" estiver marcado, persiste sessão (padrão: true)
+    // Se não estiver marcado, usa sessionStorage (limpa ao fechar navegador)
+    const { error } = await signIn(data.login, data.password, rememberMe);
     if (!error) {
       navigate('/');
     } else {
       setAuthError(error?.message || "Falha ao entrar");
     }
+  };
+
+  const handleGoogleLogin = async () => {
+    setIsGoogleLoading(true);
+    setAuthError(null);
+    const { error } = await signInWithGoogle();
+    if (error) {
+      setAuthError(error?.message || "Falha ao conectar com Google");
+      setIsGoogleLoading(false);
+    }
+    // Se sucesso, o OAuth redireciona, então não resetamos o loading
   };
 
   const onSignupSubmit = async (data: SignupForm) => {
@@ -105,14 +121,12 @@ const Auth = () => {
     <div className="min-h-screen bg-background relative overflow-hidden flex items-center justify-center">
       {/* Cosmic background effects */}
       <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0" style={{ background: "var(--gradient-aurora)" }} />
+        <div className="absolute inset-0 gradient-aurora" />
         <div
-          className="absolute top-20 left-20 w-96 h-96 rounded-full blur-3xl opacity-30 animate-cosmic-pulse"
-          style={{ background: "var(--gradient-orb)" }}
+          className="absolute top-20 left-20 w-96 h-96 rounded-full blur-3xl opacity-30 animate-cosmic-pulse gradient-orb"
         />
         <div
-          className="absolute bottom-20 right-20 w-96 h-96 rounded-full blur-3xl opacity-30 animate-cosmic-pulse"
-          style={{ background: "var(--gradient-orb)", animationDelay: "1.5s" }}
+          className="absolute bottom-20 right-20 w-96 h-96 rounded-full blur-3xl opacity-30 animate-cosmic-pulse animate-delay-1-5s gradient-orb"
         />
       </div>
 
@@ -120,7 +134,7 @@ const Auth = () => {
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center gap-3 px-4 py-2 rounded-lg shadow-lg glass-cosmic">
             <WizardHatIcon className="w-6 h-6 md:w-7 md:h-7 text-primary" />
-            <h2 className="text-lg md:text-xl font-semibold bg-gradient-cosmic bg-clip-text text-transparent">
+            <h2 className="text-lg md:text-xl font-semibold gradient-cosmic bg-clip-text text-transparent">
               Arcanum AI – Laboratório de Transmutação de Conteúdo
             </h2>
           </div>
@@ -134,7 +148,7 @@ const Auth = () => {
               </h2>
               <p className="text-muted-foreground text-sm">
                 {isLogin
-                  ? "Entre para acessar seus portais místicos"
+                  ? "Abra o Portal para acessar seus portais místicos"
                   : "Comece sua jornada criativa"}
               </p>
             </div>
@@ -146,7 +160,7 @@ const Auth = () => {
                 onValueChange={(val) => setIsLogin(val === "login")}
               >
                 <TabsList>
-                  <TabsTrigger value="login">Entrar</TabsTrigger>
+                  <TabsTrigger value="login">Abrir o Portal</TabsTrigger>
                   <TabsTrigger value="signup">Cadastrar</TabsTrigger>
                 </TabsList>
               </Tabs>
@@ -161,24 +175,27 @@ const Auth = () => {
             {isLogin ? (
               <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-4" aria-label="Formulário de login">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="login">Email ou Nome de Usuário</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                     <Input
-                      id="email"
-                      type="email"
-                      placeholder="seu@email.com"
+                      id="login"
+                      type="text"
+                      placeholder="seu@email.com ou seu_usuario"
                       className="pl-10"
-                      autoComplete="email"
-                      aria-invalid={!!loginErrors.email}
-                      aria-describedby={loginErrors.email ? "login-email-error" : undefined}
-                      ref={emailInputRef}
-                      {...registerLogin("email")}
+                      autoComplete="username"
+                      aria-invalid={!!loginErrors.login}
+                      aria-describedby={loginErrors.login ? "login-input-error" : undefined}
+                      ref={loginInputRef}
+                      {...registerLogin("login")}
                     />
                   </div>
-                  {loginErrors.email && (
-                    <p id="login-email-error" className="text-sm text-destructive" aria-live="polite">{loginErrors.email.message}</p>
+                  {loginErrors.login && (
+                    <p id="login-input-error" className="text-sm text-destructive" aria-live="polite">{loginErrors.login.message}</p>
                   )}
+                  <p className="text-xs text-muted-foreground">
+                    Você pode usar seu email ou nome de usuário para fazer login
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -201,7 +218,23 @@ const Auth = () => {
                   )}
                 </div>
 
-                {/* Ações: botão Entrar ampliado e ícone Google abaixo, centralizados */}
+                {/* Checkbox Lembrar Senha */}
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="remember-me"
+                    checked={rememberMe}
+                    onCheckedChange={(checked) => setRememberMe(checked === true)}
+                    aria-label="Lembrar senha"
+                  />
+                  <Label
+                    htmlFor="remember-me"
+                    className="text-sm font-normal cursor-pointer"
+                  >
+                    Lembrar senha
+                  </Label>
+                </div>
+
+                {/* Ações: botão Entrar ampliado e botão Google abaixo, centralizados */}
                 <div className="flex flex-col items-center gap-3">
                   <CosmicButton
                     type="submit"
@@ -209,13 +242,38 @@ const Auth = () => {
                     className="w-full h-14 md:h-16 text-lg md:text-xl shadow-sm hover:shadow transition justify-center"
                     disabled={isLoginSubmitting}
                     aria-busy={isLoginSubmitting}
-                    aria-label="Entrar"
+                    aria-label="Abrir o Portal"
                   >
-                    {isLoginSubmitting ? "Entrando..." : "Entrar"}
+                    {isLoginSubmitting ? "Abrindo o Portal..." : "Abrir o Portal"}
                   </CosmicButton>
-                  <div className="flex justify-center w-full">
-                    <GoogleIcon className="w-6 h-6 md:w-8 md:h-8" aria-hidden="true" />
+                  
+                  <div className="relative w-full">
+                    <div className="absolute inset-0 flex items-center">
+                      <Separator />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-background px-2 text-muted-foreground">Ou</span>
+                    </div>
                   </div>
+
+                  <CosmicButton
+                    type="button"
+                    onClick={handleGoogleLogin}
+                    className="w-full h-12 shadow-sm hover:shadow transition justify-center gap-2"
+                    disabled={isGoogleLoading}
+                    aria-busy={isGoogleLoading}
+                    aria-label="Entrar com Google"
+                    variant="outline"
+                  >
+                    {isGoogleLoading ? (
+                      "Conectando..."
+                    ) : (
+                      <>
+                        <GoogleIcon className="w-5 h-5" aria-hidden="true" />
+                        Entrar com Google
+                      </>
+                    )}
+                  </CosmicButton>
                 </div>
 
                 {authError && (
@@ -328,7 +386,7 @@ const Auth = () => {
               >
                 {isLogin
                   ? "Não tem uma conta? Cadastre-se"
-                  : "Já tem uma conta? Faça login"}
+                  : "Já tem uma conta? Abra o Portal"}
               </button>
             </div>
           </div>
