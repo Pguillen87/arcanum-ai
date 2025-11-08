@@ -228,7 +228,7 @@ const Auth = () => {
                   <CosmicButton
                     type="submit"
                     mystical
-                    className="w-full h-12 text-base font-semibold"
+                    className="w-full h-14 text-lg font-semibold"
                     disabled={isLoginSubmitting}
                     aria-busy={isLoginSubmitting}
                     aria-label="Entrar"
@@ -366,7 +366,7 @@ const Auth = () => {
                   <CosmicButton
                     type="submit"
                     mystical
-                    className="w-full h-12 text-base font-semibold"
+                    className="w-full h-14 text-lg font-semibold"
                     disabled={isSignupSubmitting}
                     aria-busy={isSignupSubmitting}
                     aria-label="Criar conta"
