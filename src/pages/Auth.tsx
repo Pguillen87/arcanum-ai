@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { CosmicButton } from "@/components/cosmic/CosmicButton";
 import { CosmicCard } from "@/components/cosmic/CosmicCard";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Mail, Lock, User } from "lucide-react";
+import { Mail, Lock, User, Sparkles } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 
 const passwordSchema = z
   .string()
@@ -47,6 +49,7 @@ const Auth = () => {
   const emailInputRef = useRef<HTMLInputElement | null>(null);
   const signupNameRef = useRef<HTMLInputElement | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   const {
     register: registerLogin,
@@ -102,7 +105,7 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden flex items-center justify-center">
+    <div className="min-h-screen bg-background relative overflow-hidden flex items-center justify-center p-4">
       {/* Cosmic background effects */}
       <div className="fixed inset-0 -z-10">
         <div className="absolute inset-0" style={{ background: "var(--gradient-aurora)" }} />
@@ -114,28 +117,37 @@ const Auth = () => {
           className="absolute bottom-20 right-20 w-96 h-96 rounded-full blur-3xl opacity-30 animate-cosmic-pulse"
           style={{ background: "var(--gradient-orb)", animationDelay: "1.5s" }}
         />
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl opacity-20 animate-cosmic-pulse"
+          style={{ background: "var(--gradient-orb)", animationDelay: "3s" }}
+        />
       </div>
 
-      <div className="container mx-auto px-4 py-16 max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center gap-3 px-4 py-2 rounded-lg shadow-lg glass-cosmic">
-            <WizardHatIcon className="w-6 h-6 md:w-7 md:h-7 text-primary" />
-            <h2 className="text-lg md:text-xl font-semibold bg-gradient-cosmic bg-clip-text text-transparent">
-              Arcanum AI – Laboratório de Transmutação de Conteúdo
-            </h2>
+      <div className="container mx-auto px-4 py-8 max-w-md w-full">
+        {/* Mystical Header */}
+        <div className="text-center mb-8 space-y-4">
+          <div className="inline-flex items-center justify-center gap-2 mb-2">
+            <Sparkles className="w-8 h-8 text-primary animate-pulse" />
+            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-cosmic bg-clip-text text-transparent">
+              Arcanum AI
+            </h1>
+            <Sparkles className="w-8 h-8 text-secondary animate-pulse" style={{ animationDelay: "0.5s" }} />
           </div>
+          <p className="text-sm text-muted-foreground italic">
+            Laboratório de Transmutação de Conteúdo
+          </p>
         </div>
 
         <CosmicCard glow>
-          <div className="space-y-6">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold mb-2">
-                {isLogin ? "Bem-vindo de volta" : "Criar sua conta"}
+          <div className="space-y-6 p-2">
+            <div className="text-center space-y-2">
+              <h2 className="text-2xl font-bold">
+                {isLogin ? "Bem-vindo de volta" : "Abra o Portal"}
               </h2>
               <p className="text-muted-foreground text-sm">
                 {isLogin
                   ? "Entre para acessar seus portais místicos"
-                  : "Comece sua jornada criativa"}
+                  : "Inicie sua jornada de transmutação criativa"}
               </p>
             </div>
 
@@ -144,17 +156,17 @@ const Auth = () => {
               <Tabs
                 value={isLogin ? "login" : "signup"}
                 onValueChange={(val) => setIsLogin(val === "login")}
+                className="w-full"
               >
-                <TabsList>
-                  <TabsTrigger value="login">Entrar</TabsTrigger>
-                  <TabsTrigger value="signup">Cadastrar</TabsTrigger>
+                <TabsList className="grid w-full grid-cols-2 glass-cosmic">
+                  <TabsTrigger value="login" className="data-[state=active]:bg-primary/20">
+                    Entrar
+                  </TabsTrigger>
+                  <TabsTrigger value="signup" className="data-[state=active]:bg-primary/20">
+                    Cadastrar
+                  </TabsTrigger>
                 </TabsList>
               </Tabs>
-            </div>
-
-            {/* Separador visual */}
-            <div className="relative">
-              <Separator />
             </div>
 
             {/* Email/Password Form */}
@@ -201,25 +213,61 @@ const Auth = () => {
                   )}
                 </div>
 
-                {/* Ações: botão Entrar ampliado e ícone Google abaixo, centralizados */}
-                <div className="flex flex-col items-center gap-3">
+                <div className="space-y-3">
                   <CosmicButton
                     type="submit"
                     mystical
-                    className="w-full h-14 md:h-16 text-lg md:text-xl shadow-sm hover:shadow transition justify-center"
+                    className="w-full h-12 text-base font-semibold"
                     disabled={isLoginSubmitting}
                     aria-busy={isLoginSubmitting}
                     aria-label="Entrar"
                   >
-                    {isLoginSubmitting ? "Entrando..." : "Entrar"}
+                    {isLoginSubmitting ? "Abrindo o Portal..." : "Entrar"}
                   </CosmicButton>
-                  <div className="flex justify-center w-full">
-                    <GoogleIcon className="w-6 h-6 md:w-8 md:h-8" aria-hidden="true" />
+
+                  <div className="flex items-center justify-between text-xs">
+                    <Link 
+                      to="#" 
+                      className="text-primary hover:text-primary/80 transition-colors"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        toast({
+                          title: "Recuperação de senha",
+                          description: "Funcionalidade em breve",
+                        });
+                      }}
+                    >
+                      Esqueci minha senha
+                    </Link>
                   </div>
+
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <Separator />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-card px-2 text-muted-foreground">Ou continue com</span>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full h-12 gap-3 glass-cosmic hover:bg-primary/10 transition-all"
+                    onClick={() => {
+                      toast({
+                        title: "Google OAuth",
+                        description: "Configure o Google OAuth no Supabase",
+                      });
+                    }}
+                  >
+                    <GoogleIcon className="w-5 h-5" aria-hidden="true" />
+                    <span>Entrar com Google</span>
+                  </Button>
                 </div>
 
                 {authError && (
-                  <p className="text-sm text-destructive mt-2" aria-live="polite">{authError}</p>
+                  <p className="text-sm text-destructive text-center" aria-live="polite">{authError}</p>
                 )}
               </form>
             ) : (
@@ -303,32 +351,61 @@ const Auth = () => {
                   )}
                 </div>
 
-                <CosmicButton
-                  type="submit"
-                  mystical
-                  className="w-full shadow-sm hover:shadow transition"
-                  disabled={isSignupSubmitting}
-                  aria-busy={isSignupSubmitting}
-                  aria-label="Criar conta"
-                >
-                  {isSignupSubmitting ? "Criando conta..." : "Criar conta"}
-                </CosmicButton>
+                <div className="space-y-3">
+                  <CosmicButton
+                    type="submit"
+                    mystical
+                    className="w-full h-12 text-base font-semibold"
+                    disabled={isSignupSubmitting}
+                    aria-busy={isSignupSubmitting}
+                    aria-label="Criar conta"
+                  >
+                    {isSignupSubmitting ? "Abrindo o Portal..." : "Criar Conta"}
+                  </CosmicButton>
+
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center">
+                      <Separator />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-card px-2 text-muted-foreground">Ou continue com</span>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full h-12 gap-3 glass-cosmic hover:bg-primary/10 transition-all"
+                    onClick={() => {
+                      toast({
+                        title: "Google OAuth",
+                        description: "Configure o Google OAuth no Supabase",
+                      });
+                    }}
+                  >
+                    <GoogleIcon className="w-5 h-5" aria-hidden="true" />
+                    <span>Cadastrar com Google</span>
+                  </Button>
+                </div>
 
                 {authError && (
-                  <p className="text-sm text-destructive mt-2" aria-live="polite">{authError}</p>
+                  <p className="text-sm text-destructive text-center" aria-live="polite">{authError}</p>
                 )}
               </form>
             )}
 
-            <div className="text-center text-sm">
+            <div className="text-center text-sm pt-2">
               <button
                 type="button"
-                onClick={() => setIsLogin(!isLogin)}
-                className="text-primary hover:underline"
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setAuthError(null);
+                }}
+                className="text-primary hover:text-primary/80 transition-colors font-medium"
               >
                 {isLogin
-                  ? "Não tem uma conta? Cadastre-se"
-                  : "Já tem uma conta? Faça login"}
+                  ? "Não tem uma conta? Abra seu portal ✨"
+                  : "Já tem uma conta? Entre aqui ✨"}
               </button>
             </div>
           </div>

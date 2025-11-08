@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { PortalContainer } from "@/components/portals/PortalContainer";
 import { CosmicCard } from "@/components/cosmic/CosmicCard";
 import { CosmicButton } from "@/components/cosmic/CosmicButton";
@@ -6,91 +6,41 @@ import { Shield, AlertTriangle, Settings, CheckCircle } from "lucide-react";
 import { RuneIcon } from "@/components/cosmic/RuneIcon";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { ProtectionSettings } from "@/types/auth";
 
 interface ProtecaoPortalProps {
   onClose: () => void;
 }
 
 export const ProtecaoPortal = ({ onClose }: ProtecaoPortalProps) => {
-  const { user } = useAuth();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
   const [autoModeration, setAutoModeration] = useState(true);
   const [offensiveFilter, setOffensiveFilter] = useState(true);
   const [brandVerification, setBrandVerification] = useState(true);
 
-  // Load user's protection settings
-  useEffect(() => {
-    if (user) {
-      loadSettings();
-    }
-  }, [user]);
-
-  const loadSettings = async () => {
-    if (!user) return;
-
-    try {
-      const { data, error } = await supabase
-        .from('protection_settings')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error) throw error;
-
-      if (data) {
-        setAutoModeration(data.auto_moderation);
-        setOffensiveFilter(data.offensive_filter);
-        setBrandVerification(data.brand_verification);
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const updateSetting = async (field: keyof ProtectionSettings, value: boolean) => {
-    if (!user) return;
-
-    try {
-      const { error } = await supabase
-        .from('protection_settings')
-        .update({ [field]: value })
-        .eq('user_id', user.id);
-
-      if (error) throw error;
-
-      toast({
-        title: 'Configuração atualizada',
-        description: 'Suas preferências foram salvas com sucesso.',
-      });
-    } catch (error: any) {
-      toast({
-        title: 'Erro ao atualizar',
-        description: error.message,
-        variant: 'destructive',
-      });
-    }
-  };
-
+  // UI only - no database integration yet
   const handleAutoModerationChange = (checked: boolean) => {
     setAutoModeration(checked);
-    updateSetting('auto_moderation', checked);
+    toast({
+      title: 'Configuração atualizada',
+      description: 'Moderação automática ' + (checked ? 'ativada' : 'desativada'),
+    });
   };
 
   const handleOffensiveFilterChange = (checked: boolean) => {
     setOffensiveFilter(checked);
-    updateSetting('offensive_filter', checked);
+    toast({
+      title: 'Configuração atualizada',
+      description: 'Filtro de linguagem ofensiva ' + (checked ? 'ativado' : 'desativado'),
+    });
   };
 
   const handleBrandVerificationChange = (checked: boolean) => {
     setBrandVerification(checked);
-    updateSetting('brand_verification', checked);
+    toast({
+      title: 'Configuração atualizada',
+      description: 'Verificação de marca ' + (checked ? 'ativada' : 'desativada'),
+    });
   };
 
   return (
@@ -151,7 +101,6 @@ export const ProtecaoPortal = ({ onClose }: ProtecaoPortalProps) => {
                     id="auto-moderation"
                     checked={autoModeration}
                     onCheckedChange={handleAutoModerationChange}
-                    disabled={loading}
                   />
                 </div>
               </div>
@@ -171,7 +120,6 @@ export const ProtecaoPortal = ({ onClose }: ProtecaoPortalProps) => {
                     id="offensive-filter"
                     checked={offensiveFilter}
                     onCheckedChange={handleOffensiveFilterChange}
-                    disabled={loading}
                   />
                 </div>
               </div>
@@ -191,7 +139,6 @@ export const ProtecaoPortal = ({ onClose }: ProtecaoPortalProps) => {
                     id="brand-verification"
                     checked={brandVerification}
                     onCheckedChange={handleBrandVerificationChange}
-                    disabled={loading}
                   />
                 </div>
               </div>
