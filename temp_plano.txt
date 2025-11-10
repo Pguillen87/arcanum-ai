@@ -1,0 +1,870 @@
+﻿# Plano de ImplementaÃ§Ã£o do Backend â€” Arcanum AI
+
+titulo: plano_backend_arcanum_ai
+autor: agente/ArcanumAI
+responsavel: admin
+data_criacao: 2025-11-07
+status: draft
+referencias: [docs/excencial/PRD â€” Arcanum AI.txt, docs/excencial/specs-tecnicas-objetivas.md, docs/excencial/security.md]
+dependencias: [supabase/config.toml, supabase/migrations, src/integrations/supabase]
+
+objetivo:
+- Entregar um backend seguro, observÃ¡vel e testÃ¡vel para os fluxos centrais do PRD: ingestÃ£o de conteÃºdo, transcriÃ§Ã£o (Whisper), transformaÃ§Ã£o de texto, vÃ­deos curtos, Voz da Marca, crÃ©ditos/assinaturas/pagamentos e notificaÃ§Ãµes.
+
+ObservaÃ§Ã£o de estado atual
+- Banco remoto (giozhrukzcqoopssegby) estÃ¡ vazio â€” nÃ£o hÃ¡ tabelas criadas ainda (resposta HTTP 404 para /rest/v1/profiles). A implantaÃ§Ã£o deverÃ¡ comeÃ§ar pelas migraÃ§Ãµes iniciais com DDL/RLS/triggers.
+
+criterios_aceitacao:
+- Arquitetura definida e documentada (diagramas, tecnologias, infraestrutura)
+- Modelo de dados (DDL), RLS, triggers e RPCs criados e testados
+- Edge Functions e endpoints com contratos versionados
+- SeguranÃ§a: webhook signatures, idempotÃªncia, RLS owner-only, rate limits, auditoria
+- Testes: unit (SQL/RPC), integraÃ§Ã£o (Edge + DB, RLS), carga (consultas crÃ­ticas) e e2e (fluxos principais)
+
+---
+
+## 1) Requisitos TÃ©cnicos e Arquitetura do Sistema
+
+Objetivo tÃ©cnico
+- Definir claramente os componentes, limites de responsabilidade, variÃ¡veis de ambiente, requisitos de seguranÃ§a/privacidade e fluxos de integraÃ§Ã£o Client â†” Edge â†” Supabase â†” Provedores externos, de forma testÃ¡vel e incremental.
+
+PrincÃ­pios de arquitetura
+- Simplicidade primeiro: utilizar Supabase (Auth, Postgres, Storage, Realtime, Edge) como backbone; evitar serviÃ§os extras atÃ© haver necessidade comprovada.
+- SeguranÃ§a por padrÃ£o: RLS ownerâ€‘only em todas as tabelas, service role apenas em Edge Functions; nunca no frontend.
+- Observabilidade sem PII: logs e mÃ©tricas com scrub, correlaÃ§Ã£o por job_id, nÃ­veis de sampling diferenciados.
+- Testabilidade: camadas e contratos bem definidos para permitir mocks/stubs, testes unitÃ¡rios (SQL/JS), integraÃ§Ã£o e e2e.
+
+Diagrama (alto nÃ­vel)
+
+```mermaid
+flowchart LR
+  subgraph Client
+    A[SPA: Vite + React + TS + PWA]
+    A --> SW[(Service Worker: Workbox)]
+  end
+
+  A -- Auth (JWT) --> B[(Supabase Auth)]
+  A -- REST/RPC --> C[(Supabase Postgres)]
+  A -- Storage --> D[(Supabase Storage)]
+  A -- Realtime --> E[(Supabase Realtime)]
+
+  subgraph Edge
+    F[Supabase Edge Functions]
+    F -- AI/Whisper/Transform --> G[(AI Providers)]
+    F -- Payments Webhooks --> H[(Stripe/Mercado Pago)]
+  end
+
+  F <--> C
+  F <--> D
+  F --> I[(Observability: Sentry/LogRocket)]
+```
+
+Tecnologias e frameworks
+- Frontend: Vite, React, TypeScript, Tailwind, PWA (Workbox)
+- Backend: Supabase (Postgres, Auth, Storage, Edge Functions, Realtime)
+- Observabilidade: mÃ³dulo Observability com scrub de PII; integraÃ§Ã£o futura com Sentry/LogRocket via env
+- Testes: Vitest (unit/integration), Playwright (e2e), k6 (carga, opcional), supabase CLI para migrations
+- Pagamentos: Stripe ou Mercado Pago (webhooks com assinatura e idempotÃªncia)
+ - AutenticaÃ§Ã£o: Supabase Auth (email/senha, OAuth Google); suporte a "login por nome de usuÃ¡rio" via Edge Function; opÃ§Ã£o futura de Passkeys/WebAuthn
+
+EspecificaÃ§Ãµes de hardware/infraestrutura
+- Banco: Supabase gerenciado (Postgres) â€” inÃ­cio com plano que garanta 2â€“4 vCPU e armazenamento â‰¥ 20 GB; escalÃ¡vel conforme volume
+- Storage: Supabase Storage (privado), CDN habilitada; retenÃ§Ã£o definida por plano
+- Edge Functions: ambiente Supabase Functions com acesso a Service Role; rate limit e logs estruturados
+- Ambientes: dev/test/prod separados; seeds apenas em dev; segredos via repositÃ³rio/ambiente (sem commit de keys)
+
+Topologia lÃ³gica de responsabilidades
+- Client (SPA): UI, acessibilidade, validaÃ§Ãµes leve; chama PostgREST (ownerâ€‘only), RPCs pÃºblicas seguras e Edge para operaÃ§Ãµes com service role (ex.: username-login, webhooks, IA).
+- Supabase DB: persistÃªncia, RLS, triggers, RPCs; expÃµe PostgREST e funÃ§Ãµes; nÃ£o recebe service role direto do cliente.
+- Edge Functions: orquestraÃ§Ã£o, integraÃ§Ãµes externas (OpenAI, Stripe/Mercado Pago), autenticaÃ§Ã£o por username (lookup + sign-in), rate limits, auditoria.
+- Storage: buckets privados (text/audio/video); upload/download via signed URLs; limpeza de Ã³rfÃ£os e retenÃ§Ã£o.
+- Observabilidade: captura de eventos com scrub (sem emails, senhas, tokens); tracing por job_id; SLOs por endpoint.
+
+Fluxos crÃ­ticos (sequÃªncia simplificada)
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as UsuÃ¡rio (SPA)
+  participant E as Edge (username-login)
+  participant A as Supabase Auth
+  participant DB as Postgres / RLS
+
+  U->>E: POST /api/auth/username-login {username, password}
+  E->>DB: query profiles by lower(username)
+  E->>A: signInWithPassword(email, password) (admin)
+  A-->>E: session (access_token) 
+  E-->>U: session (sem expor email)
+
+  U->>A: OAuth Google
+  A-->>DB: trigger handle_new_user() cria profile c/ username Ãºnico
+  U-->>DB: lÃª/atualiza dados via PostgREST (RLS owner-only)
+```
+
+VariÃ¡veis de ambiente (mÃ­nimas por ambiente)
+- Frontend (Vite):
+  - VITE_SUPABASE_URL=https://giozhrukzcqoopssegby.supabase.co
+  - VITE_SUPABASE_ANON_KEY=anon-key (nunca service role)
+- Edge Functions:
+  - SUPABASE_URL=https://giozhrukzcqoopssegby.supabase.co
+  - SUPABASE_SERVICE_ROLE=service-role JWT
+  - OPENAI_API_KEY=...
+  - STRIPE_SECRET=... / MP_ACCESS_TOKEN=...
+  - LOG_SAMPLING_RATE=0.1 (exemplo)
+- CLI/CI:
+  - SUPABASE_ACCESS_TOKEN=token pessoal (para login/link/push)
+
+PolÃ­ticas de seguranÃ§a e limites
+- RLS ownerâ€‘only; VIEW public_profiles para colunas pÃºblicas (username, avatar_url) sem PII.
+- Service role apenas em Edge; contratos de CORS e rate limit.
+- Webhooks com assinatura e idempotÃªncia; auditoria sem dados sensÃ­veis.
+- CSP restritiva e sanitizaÃ§Ã£o de HTML dinÃ¢mico no SPA.
+
+CritÃ©rios de aceitaÃ§Ã£o (Parte 1)
+- Arquitetura documentada com diagramas (alto nÃ­vel e sequÃªncia de auth).
+- VariÃ¡veis de ambiente listadas por camada, com diretrizes de seguranÃ§a.
+- Responsabilidades e limites claros entre Client, Edge, DB e Storage.
+- EstratÃ©gia de observabilidade (eventos, scrub, tracing), sem PII.
+- Plano de testes para fluxos de auth (username + Google) e ownerâ€‘only via RLS.
+
+Testabilidade (Parte 1)
+- Unit (JS/TS): stubs do supabase client; validar heurÃ­stica de login (email vs username) e estados do AuthContext.
+- Unit (SQL): funÃ§Ãµes utilitÃ¡rias (ex.: normalizaÃ§Ã£o/sugestÃ£o de username), set_updated_at.
+- IntegraÃ§Ã£o: chamadas a Edge (username-login) com MSW; PostgREST sob RLS; OAuth Google mock.
+- E2E: login por username/Google; persistÃªncia mobile; logout limpando caches.
+
+Checklist de entrega (Parte 1)
+- [x] Confirmar VITE_SUPABASE_URL em dev/test.
+- [x] Confirmar VITE_SUPABASE_ANON_KEY em dev/test. (configurada em .env.local)
+- [x] Definir e armazenar SUPABASE_SERVICE_ROLE apenas para Edge/CI (nÃ£o frontend). (reservada para Edge/CI; nÃ£o usada no frontend)
+- [x] Especificar VIEW public_profiles e polÃ­ticas RLS owner-only no plano (com exemplos).
+- [x] Diagramas gerados e versionados (Mermaid no docs + imagem opcional).
+- [x] EsboÃ§o de testes unit/integration/e2e para auth e RLS.
+- [x] Refatorar client do Supabase para usar VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY (sem secrets hardcoded).
+
+---
+
+## 2) Componentes Principais
+
+VisÃ£o geral
+- ComponentizaÃ§Ã£o orientada a casos de uso do PRD (upload/ingestÃ£o, transcriÃ§Ã£o, transformaÃ§Ã£o de texto, vÃ­deo curto, Voz da Marca, crÃ©ditos/pagamentos, notificaÃ§Ãµes), com serviÃ§os/Adapters isolados para facilitar testes e evoluÃ§Ã£o.
+
+### 2.1 Arquitetura Backend proposta (detalhada)
+- Camadas e limites
+  - Client (SPA): UI, acessibilidade, validaÃ§Ãµes leves, consumo de PostgREST/RPCs pÃºblicas seguras. NUNCA usa service_role.
+  - Edge Functions: orquestraÃ§Ã£o (IA/Whisper), autenticaÃ§Ã£o por username (lookup + sign-in admin), pagamentos/webhooks, rate limit e auditoria. Usa service_role via variÃ¡veis de ambiente.
+  - Supabase Postgres: persistÃªncia (DDL), RLS ownerâ€‘only, triggers (set_updated_at/ledger), RPCs (ex.: auth_username_available), views pÃºblicas controladas (public_profiles).
+  - Storage: buckets privados (text/audio/video), acesso via signed URLs; retenÃ§Ã£o/arquivamento; limpeza de Ã³rfÃ£os.
+  - Realtime/Notifications: estados lidos/nÃ£o lidos e emissÃ£o de eventos.
+  - Observabilidade: logs estruturados com scrub, tracing por job_id; mÃ©tricas (latÃªncia/erros/consumo IA).
+
+Diagrama (componentes)
+```mermaid
+flowchart TB
+  subgraph SPA[Frontend SPA]
+    UI[React/TS + PWA]
+  end
+
+  subgraph Edge[Supabase Edge Functions]
+    ULogin[username-login]
+    TText[transform_text]
+    TAudio[transcribe_audio]
+    TVideo[video_short]
+    Pay[payments/webhooks]
+  end
+
+  PostgREST[(PostgREST/RPCs)]
+  DB[(Postgres: DDL/RLS/Triggers/Views)]
+  Storage[(Buckets: text/audio/video)]
+  RT[(Realtime)]
+
+  UI -- anon key --> PostgREST
+  UI -. events .-> RT
+  ULogin -- service_role --> PostgREST
+  TText --> PostgREST
+  TAudio --> PostgREST
+  TVideo --> PostgREST
+  Pay --> PostgREST
+  PostgREST --> DB
+  TAudio --> Storage
+  TVideo --> Storage
+```
+
+Checklist â€” Arquitetura
+- [x] Camadas e limites definidos (Client/Edge/DB/Storage/Realtime/Observability)
+- [x] Diagrama dos componentes
+- [x] Service role reservado a Edge/CI; anon key no frontend
+
+### 2.2 Diagramas tÃ©cnicos dos componentes
+- Fluxo de login por username (Edge)
+```mermaid
+sequenceDiagram
+  autonumber
+  participant SPA as SPA
+  participant EDGE as Edge: username-login
+  participant API as PostgREST
+  participant AUTH as Supabase Auth (admin)
+  participant DB as Postgres
+
+  SPA->>EDGE: POST /api/auth/username-login {username, password}
+  EDGE->>API: SELECT profiles WHERE lower(username)=:u (service_role)
+  API->>DB: query profiles
+  DB-->>API: user_id/email
+  API-->>EDGE: user record
+  EDGE->>AUTH: signInWithPassword(email, password)
+  AUTH-->>EDGE: session
+  EDGE-->>SPA: session (sem expor email)
+```
+
+- Fluxo de transcriÃ§Ã£o (Whisper)
+```mermaid
+sequenceDiagram
+  autonumber
+  participant SPA as SPA
+  participant EDGE as Edge: transcribe_audio
+  participant API as PostgREST
+  participant DB as Postgres
+  participant ST as Storage
+  participant AI as Whisper API
+
+  SPA->>EDGE: POST /api/transcriptions {assetId}
+  EDGE->>API: INSERT transcriptions (queued)
+  API->>DB: insert queued
+  EDGE->>ST: GET signed url for asset
+  EDGE->>AI: transcribe(audio)
+  AI-->>EDGE: text
+  EDGE->>API: UPDATE transcriptions (completed, text)
+  API->>DB: update
+  SPA->>API: GET /transcriptions/:jobId
+  API->>DB: select
+  DB-->>API: record
+  API-->>SPA: status/text
+```
+
+Checklist â€” Diagramas
+- [x] Diagrama de username-login
+- [x] Diagrama de transcriÃ§Ã£o
+
+### 2.3 EspecificaÃ§Ã£o dos serviÃ§os e APIs necessÃ¡rios
+- PadrÃ£o de erro e idempotÃªncia
+  - Erros: `{ code, message, details?, correlationId? }`. Ex.: `{ code:"VAL_001", message:"Formato invÃ¡lido" }`
+  - IdempotÃªncia: header `Idempotency-Key` nos POSTs; ledger com `UNIQUE(user_id, ref_type, ref_id)`.
+
+- Exemplos de cÃ³digo (Edge: username-login)
+```ts
+// supabase/functions/username-login/index.ts
+import { createClient } from '@supabase/supabase-js'
+
+const url = process.env.SUPABASE_URL!
+const serviceRole = process.env.SUPABASE_SERVICE_ROLE!
+const admin = createClient(url, serviceRole)
+
+export default async (req: Request): Promise<Response> => {
+  const { username, password } = await req.json()
+  const u = (username || '').trim().toLowerCase()
+  // Rate limit & audit omitted for brevity
+  const { data, error } = await admin
+    .from('profiles')
+    .select('*')
+    .eq('username', u)
+    .maybeSingle()
+  if (error || !data) return Response.json({ code:'AUTH_404', message:'UsuÃ¡rio nÃ£o encontrado' }, { status:404 })
+  const { data: signIn, error: signErr } = await admin.auth.signInWithPassword({ email: data.email, password })
+  if (signErr) return Response.json({ code:'AUTH_401', message:'Credenciais invÃ¡lidas' }, { status:401 })
+  return Response.json({ session: signIn.session })
+}
+```
+
+- Exemplos de cÃ³digo (RPC: disponibilidade de username)
+```sql
+-- Rascunho: retorna apenas disponibilidade
+create or replace function public.auth_username_available(p_username text)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select not exists(
+    select 1 from public.profiles
+    where lower(username) = lower(p_username)
+  );
+$$;
+```
+
+- Endpoints principais (v1)
+  - POST /api/auth/username-login â†’ { session }
+  - POST /api/transcriptions â†’ { jobId }
+  - GET/PUT /api/transcriptions/:jobId â†’ status/resultado
+  - POST /api/transform/text â†’ { jobId } / GET â†’ status/outputs
+  - POST /api/transform/video â†’ { jobId } / GET â†’ status/outputs
+  - POST /api/credits/purchase â†’ intent
+  - POST /api/payments/webhooks â†’ { ok }
+  - POST /api/upload (signed URL), GET /api/assets/:id
+
+Checklist â€” ServiÃ§os/APIs
+- [x] Erros/idempotÃªncia definidos
+- [x] Exemplos de cÃ³digo (Edge/RPC)
+- [x] CatÃ¡logo de endpoints v1
+
+### 2.4 Fluxo de dados entre os mÃ³dulos
+- TransformaÃ§Ã£o de texto
+```mermaid
+sequenceDiagram
+  autonumber
+  participant SPA as SPA
+  participant EDGE as Edge: transform_text
+  participant API as PostgREST
+  participant DB as Postgres
+  participant AI as GPT API
+
+  SPA->>EDGE: POST /api/transform/text {projectId, params}
+  EDGE->>API: INSERT transformations (queued)
+  EDGE->>AI: generateText(prompt)
+  AI-->>EDGE: outputs
+  EDGE->>API: UPDATE transformations (completed, outputs, cost_credits)
+  SPA->>API: GET /api/transform/text/:jobId
+  API-->>SPA: status/outputs
+```
+
+Checklist â€” Fluxos
+- [x] Fluxo texto
+- [x] Fluxo transcriÃ§Ã£o
+
+### 2.5 Requisitos de seguranÃ§a e autenticaÃ§Ã£o
+- AutenticaÃ§Ã£o: Supabase Auth (JWT), OAuth Google; username-login via Edge.
+- AutorizaÃ§Ã£o: RLS ownerâ€‘only em tabelas; views pÃºblicas controladas.
+- SeguranÃ§a operacional:
+  - Service role apenas em Edge/CI.
+  - Webhooks com assinatura e idempotÃªncia.
+  - Rate limit para endpoints sensÃ­veis; auditoria sem PII.
+- Exemplo RLS (profiles)
+```sql
+alter table public.profiles enable row level security;
+create policy profiles_select_owner on public.profiles for select to authenticated using (auth.uid() = id);
+create policy profiles_update_owner on public.profiles for update to authenticated using (auth.uid() = id) with check (auth.uid() = id);
+```
+
+Checklist â€” SeguranÃ§a
+- [x] AutenticaÃ§Ã£o/AutorizaÃ§Ã£o definidas
+- [x] Service role/anon separados
+- [x] Exemplo RLS incluÃ­do
+
+### 2.6 EstratÃ©gia de persistÃªncia de dados
+- DDL principal: profiles (username Ãºnico lower), projects, assets, transcriptions, transformations, credits/credit_transactions (ledger), subscriptions, usage_limits, payments (event_id Ãºnico), notifications, audit_logs.
+- Ãndices: (user_id, status, created_at), UNIQUE compostos para idempotÃªncia, GIN em jsonb quando necessÃ¡rio.
+- Particionamento opcional: transcriptions/transformations por mÃªs em alto volume.
+- RetenÃ§Ã£o: polÃ­ticas por tipo; limpeza de Ã³rfÃ£os no Storage; arquivamento de outputs pesados.
+- Exemplo DDL (profiles + trigger)
+```sql
+create table public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  username text not null,
+  full_name text,
+  avatar_url text,
+  brand_voice jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  constraint profiles_username_unique unique (lower(username))
+);
+create or replace function public.set_updated_at()
+returns trigger language plpgsql as $$ begin new.updated_at = now(); return new; end; $$;
+create trigger set_updated_at_profiles before update on public.profiles for each row execute function public.set_updated_at();
+```
+
+Checklist â€” PersistÃªncia
+- [x] DDL/Ãndices/Particionamento/RetenÃ§Ã£o descritos
+- [x] Exemplo DDL e trigger
+
+### 2.7 Plano de implementaÃ§Ã£o (cronograma estimado)
+- ReferÃªncia: ver SeÃ§Ã£o 4 (Cronograma) para detalhe por fases.
+- Resumo Parte 2 (Componentes + Infra):
+  - [ ] Dia 1â€“2: consolidar DDL/RLS/views/RPCs e gerar types TS; preparar adapters e contratos.
+  - [x] Dia 3â€“4: implementar Edge username-login/transcribe/transform (mock inicial); configurar rate limit e auditoria.
+  - [x] Dia 5: integrar autenticaÃ§Ã£o Google no frontend; testes unit/integration/e2e incrementais.
+  - [x] Dia 6: storage buckets/policies, assinaturas de upload; limpeza de Ã³rfÃ£os.
+  - [ ] Dia 7: observabilidade bÃ¡sica (scrub, tracing job_id), dashboards iniciais; ajuste de SLOs.
+
+Checklist â€” Cronograma Parte 2
+- [x] Arquitetura/Contratos/Adapters planejados
+- [x] Cronograma resumido presente (detalhe na SeÃ§Ã£o 4)
+
+### 2.8 Recursos e links Ãºteis
+- Supabase Auth: https://supabase.com/docs/guides/auth
+- Edge Functions: https://supabase.com/docs/guides/functions
+- Database/RLS: https://supabase.com/docs/guides/database
+- PostgREST/RPC: https://supabase.com/docs/guides/api
+- Storage: https://supabase.com/docs/guides/storage
+- JS Client: https://supabase.com/docs/reference/javascript
+
+Checklist â€” DocumentaÃ§Ã£o
+- [x] Links para recursos
+- [x] Exemplos de cÃ³digo
+- [x] SeÃ§Ãµes identificadas e consistentes
+
+MÃ³dulos e serviÃ§os (contratos e responsabilidades)
+- supabaseService
+  - ResponsÃ¡vel por criar e expor o client Supabase (auth/db/storage/realtime) de forma centralizada e mockÃ¡vel.
+  - Contratos principais:
+    - getClient(): retorna instÃ¢ncia tipada.
+    - auth(): wrapper para operaÃ§Ãµes de auth (delegado ao authService).
+  - Tarefas
+    - [x] Centralizar client Supabase com leitura de env e sem secrets hardcoded.
+    - [x] Criar wrapper leve para facilitar mocks e stubs nos testes.
+
+- authService
+  - Fluxos: email/senha, Google OAuth, username-login via Edge; reset/lembrar senha; disponibilidade de username.
+  - Contratos principais:
+    - signInWithEmail(email, password) â†’ Session
+    - signInWithUsername(username, password) â†’ Session (Edge)
+    - signInWithGoogle(redirectTo) â†’ redireciona; session via callback
+    - signUpEmail(email, password, fullName) â†’ User
+    - resetPasswordForEmail(email) â†’ OK
+    - isUsernameAvailable(username) â†’ boolean (RPC)
+  - Tarefas
+    - [x] Implementar Edge /api/auth/username-login com rate limit e auditoria.
+    - [x] Integrar botÃ£o Google OAuth no Auth.tsx.
+    - [x] Expor RPC auth_username_available e normalizar input (lower + NFKC).
+    - [ ] Testes unit/integration/e2e dos fluxos (sucesso/falha/brute force).
+
+- profilesService
+  - ResponsÃ¡vel por CRUD seguro de perfis (owner-only) e leitura pÃºblica via VIEW.
+  - Contratos: getMyProfile(), updateMyProfile(payload), getPublicProfile(username) â†’ VIEW.
+  - Tarefas
+    - [x] Criar VIEW public_profiles e polÃ­ticas de acesso. (migraÃ§Ã£o criada)
+    - [ ] Testes de RLS: owner-only; VIEW pÃºblica sem PII.
+
+- projectsService
+  - CRUD de projetos; validaÃ§Ãµes de nome/descriÃ§Ã£o; relaÃ§Ã£o com assets/transformations.
+  - Contratos: createProject(name, description), listProjects(), getProject(id).
+  - Tarefas
+    - [x] DDL com FK user_id; Ã­ndices por created_at; RLS owner-only.
+    - [x] Service implementado com CRUD completo.
+    - [x] Hook useProjects criado.
+    - [ ] Testes de polÃ­ticas e consultas.
+
+- assetsService
+  - Upload (signed URL), listagem e metadata; buckets privados text/audio/video.
+  - Contratos: createSignedUploadUrl(projectId, type), listAssets(projectId), getAsset(id).
+  - Tarefas
+    - [x] Configurar buckets e polÃ­ticas owner-only; validaÃ§Ãµes de tipo/tamanho.
+    - [x] Service implementado com upload e listagem.
+    - [x] Hook useAssets criado.
+    - [x] Componente FileUpload criado.
+    - [ ] Limpeza de Ã³rfÃ£os e retenÃ§Ã£o; testes de upload/download.
+
+- transcriptionsService
+  - CriaÃ§Ã£o de jobs de transcriÃ§Ã£o (Whisper via Edge), estados e exportaÃ§Ãµes (SRT/PDF/DOC opcional).
+  - Contratos: createTranscription(assetId, language), getTranscription(jobId), markTranscriptionCompleted(jobId, text, error?).
+  - Tarefas
+    - [x] DDL com status enum (queued/processing/completed/failed), Ã­ndices e FK.
+    - [ ] Edge function de transcriÃ§Ã£o (mock inicial); testes de estados e exportaÃ§Ãµes.
+
+- transformService (texto)
+  - GeraÃ§Ã£o de posts/resumos/newsletters/roteiros; aplicaÃ§Ã£o da Voz da Marca; idempotÃªncia.
+  - Contratos: createTextTransform(projectId, params), getTextTransform(jobId), applyBrandVoice(text, profile).
+  - Tarefas
+    - [x] DDL transformations; status FSM; idempotency-key.
+    - [x] Edge function transform_text (skeleton criado).
+    - [x] openaiAdapter implementado.
+    - [x] transformService implementado.
+    - [x] Hook useTransformation criado.
+    - [x] UI TransformTextPortal criada e integrada.
+    - [ ] Testes unit e integraÃ§Ã£o.
+
+- videoService (vÃ­deos curtos)
+  - DetecÃ§Ã£o/cortes e legendas dinÃ¢micas; preview gratuito; render final.
+  - Contratos: createVideoTransform(assetId, params), getVideoTransform(jobId).
+  - Tarefas
+    - [ ] DDL com outputs jsonb (cortes/legendas); polÃ­ticas de acesso.
+    - [ ] Edge mock inicial; testes de preview e estados.
+
+- brandProfilesService (Voz da Marca)
+  - Presets e embeddings leves; aplicaÃ§Ã£o nos jobs.
+  - Contratos: saveBrandVoice(userId, payload), getBrandVoice(userId), applyToJob(jobId).
+  - Tarefas
+    - [ ] DDL brand_voice em profiles; validaÃ§Ãµes.
+    - [ ] Testes de aplicaÃ§Ã£o em transformaÃ§Ãµes (efeito visÃ­vel).
+
+- creditsService
+  - Ledger de crÃ©ditos (delta) e saldo; dÃ©bito pÃ³s-entrega; idempotÃªncia por ref.
+  - Contratos: debitCredits(userId, amount, ref), creditCredits(userId, amount, reason), getBalance(userId).
+  - Tarefas
+    - [x] Triggers: credit_transactions â†’ atualiza credits; unique(user_id, ref_type, ref_id).
+    - [x] creditsService implementado.
+    - [x] Hook useCredits criado.
+    - [ ] Testes de justiÃ§a (nÃ£o permitir saldo negativo, idempotÃªncia).
+
+- paymentsService (Stripe/Mercado Pago)
+  - Webhooks idempotentes, reconciliaÃ§Ã£o com crÃ©ditos e subscriptions.
+  - Contratos: webhookHandler(event), reconcilePayment(eventId), purchaseCreditsIntent(userId, plan).
+  - Tarefas
+    - [ ] VerificaÃ§Ã£o de assinatura; idempotÃªncia por event_id; logging seguro.
+    - [ ] Testes integraÃ§Ã£o (aprovado/negado/refund) e reconciliaÃ§Ã£o.
+
+- notificationsService
+  - Realtime + e-mail; estados lidos/nÃ£o lidos e agrupamento.
+  - Contratos: notify(userId, type, payload), listNotifications(userId), markRead(id).
+  - Tarefas
+    - [ ] DDL notifications; RLS; Ã­ndices; testes de assinatura Realtime.
+
+- observabilityService
+  - Scrub de PII, logs estruturados, tracing por job_id e mÃ©tricas.
+  - Contratos: trackEvent(name, payloadSafe), trackError(error), startSpan(jobId), endSpan(jobId).
+  - Tarefas
+    - [ ] Configurar sampling por ambiente; validar que tokens/senhas nunca entram nos logs.
+    - [ ] Dashboards bÃ¡sicos e alertas (falhas de auth/pagamentos).
+
+- rateLimitService
+  - Token bucket/Janela deslizante em Edge para endpoints sensÃ­veis (auth, payments, IA).
+  - Contratos: checkAndConsume(key, quota) â†’ boolean.
+  - Tarefas
+    - [ ] Implementar limitador simples (KV/DB) e hooks de auditoria.
+    - [ ] Testes de bloqueio e mensagens amigÃ¡veis.
+
+- storageService
+  - Buckets, signed URLs, retenÃ§Ã£o e limpeza de Ã³rfÃ£os.
+  - Contratos: createSignedUrl(bucket, path, options), enforceRetention(policy), cleanupOrphans().
+  - Tarefas
+    - [x] Definir policies por bucket (owner-only); migration criada.
+    - [ ] Testar upload/download; retenÃ§Ã£o.
+
+Adapters externos (para isolamento)
+- [x] openaiAdapter: chamadas a GPT/Whisper com timeout/retries; normalizaÃ§Ã£o de prompts/saÃ­das.
+- [ ] stripeAdapter/mpAdapter: assinatura de webhooks, intents de pagamento, reconciliaÃ§Ã£o.
+- [ ] emailAdapter: envio de e-mails transacionais (reset de senha, notificaÃ§Ãµes financeiras).
+
+Cross-cutting concerns
+- Tratamento de erros (categorias: validaÃ§Ã£o, negÃ³cio, integraÃ§Ã£o) com cÃ³digos e mensagens consistentes.
+- IdempotÃªncia (Idempotency-Key nos endpoints e unique keys em DB) e correlaÃ§Ã£o por job_id.
+- SeguranÃ§a (CSP, sanitizaÃ§Ã£o, RLS, service role apenas em Edge) e auditoria sem PII.
+
+Checklist de entrega (Parte 2 â€” Componentes)
+- [x] Definir serviÃ§os e responsabilidades alinhadas ao PRD.
+- [x] Especificar contratos (assinaturas) e DTOs por mÃ³dulo.
+- [x] Criar Adapters externos com interfaces estÃ¡veis.
+- [x] Documentar erros idempotÃªncia/correlaÃ§Ã£o (padrÃµes), com exemplos.
+- [x] Planejar testes unit/integration por mÃ³dulo e mocks necessÃ¡rios.
+
+Contratos (assinaturas) e DTOs por mÃ³dulo
+- authService
+  - signInWithEmail(email: string, password: string) â†’ Session
+  - signInWithUsername(username: string, password: string) â†’ Session (via Edge)
+  - signInWithGoogle(redirectTo: string) â†’ void (redireciona para OAuth)
+  - signUpEmail(email: string, password: string, fullName: string) â†’ { userId: string }
+  - resetPasswordForEmail(email: string) â†’ { ok: boolean }
+  - isUsernameAvailable(username: string) â†’ { available: boolean, suggestion?: string }
+  - DTOs: { login?: string; username?: string; password: string }, { available: boolean, suggestion?: string }
+- profilesService
+  - getMyProfile() â†’ { id, username, full_name, avatar_url, brand_voice }
+  - updateMyProfile(payload: { full_name?: string, avatar_url?: string, brand_voice?: object }) â†’ { ok: boolean }
+  - getPublicProfile(username: string) â†’ { username, avatar_url }
+- projectsService
+  - createProject(name: string, description?: string) â†’ { id }
+  - listProjects() â†’ Array<{ id, name, description, created_at }>
+  - getProject(id: string) â†’ { id, name, description, created_at }
+- assetsService
+  - createSignedUploadUrl(projectId: string, type: 'text'|'audio'|'video', options?: { mimetype?: string, sizeBytes?: number }) â†’ { url, path, expiresAt }
+  - listAssets(projectId: string) â†’ Array<AssetDTO>
+  - getAsset(id: string) â†’ AssetDTO
+  - AssetDTO: { id, project_id, user_id, storage_path, type, size_bytes, duration_seconds?, mimetype?, status, created_at }
+- transcriptionsService
+  - createTranscription(assetId: string, language?: string) â†’ { jobId }
+  - getTranscription(jobId: string) â†’ TranscriptionDTO
+  - markTranscriptionCompleted(jobId: string, payload: { text?: string, error?: string }) â†’ { ok: boolean }
+  - TranscriptionDTO: { id, asset_id, user_id, language, status, text?, error?, job_id, created_at }
+- transformService (texto)
+  - createTextTransform(projectId: string, params: TextTransformParams) â†’ { jobId }
+  - getTextTransform(jobId: string) â†’ TextTransformDTO
+  - applyBrandVoice(text: string, profile: { brand_voice?: object }) â†’ { text: string }
+  - TextTransformParams: { kind: 'post'|'resumo'|'newsletter'|'roteiro', tone?: string, brand_voice?: object, length?: 'short'|'long', idempotencyKey?: string }
+  - TextTransformDTO: { id, project_id, user_id, type, params, outputs, status, error?, cost_credits?, created_at }
+- videoService
+  - createVideoTransform(assetId: string, params: VideoTransformParams) â†’ { jobId }
+  - getVideoTransform(jobId: string) â†’ VideoTransformDTO
+  - VideoTransformParams: { cuts?: boolean, subtitles?: boolean, style?: string, idempotencyKey?: string }
+  - VideoTransformDTO: { id, project_id, user_id, type, params, outputs, status, error?, created_at }
+- brandProfilesService
+  - saveBrandVoice(userId: string, payload: object) â†’ { ok: boolean }
+  - getBrandVoice(userId: string) â†’ { brand_voice?: object }
+  - applyToJob(jobId: string) â†’ { ok: boolean }
+- creditsService
+  - debitCredits(userId: string, amount: number, ref: { ref_type: string, ref_id: string }) â†’ { balance: number }
+  - creditCredits(userId: string, amount: number, reason: string) â†’ { balance: number }
+  - getBalance(userId: string) â†’ { user_id: string, balance: number }
+  - CreditTransactionDTO: { id, user_id, delta, reason, ref_type, ref_id, created_at }
+- paymentsService
+  - webhookHandler(event: PaymentEventDTO) â†’ { ok: boolean }
+  - reconcilePayment(eventId: string) â†’ { ok: boolean }
+  - purchaseCreditsIntent(userId: string, plan: { plan_code: string }) â†’ { intentId: string }
+  - PaymentEventDTO: { event_id: string, provider: 'stripe'|'mp', status: string, amount_cents: number, currency: string, metadata?: object }
+- notificationsService
+  - notify(userId: string, type: string, payload: object) â†’ { id: string }
+  - listNotifications(userId: string) â†’ Array<{ id, type, payload, read_at?, created_at }>
+  - markRead(id: string) â†’ { ok: boolean }
+- observabilityService
+  - trackEvent(name: string, payloadSafe: object, ctx?: { job_id?: string }) â†’ { ok: boolean }
+  - trackError(error: unknown, ctx?: { job_id?: string }) â†’ { ok: boolean }
+  - startSpan(jobId: string) â†’ { spanId: string }
+  - endSpan(jobId: string, spanId: string) â†’ { ok: boolean }
+- rateLimitService
+  - checkAndConsume(key: string, quota: { windowMs: number, max: number }) â†’ { allowed: boolean, remaining: number, resetAt: string }
+- storageService
+  - createSignedUrl(bucket: string, path: string, options?: { expiresIn?: number }) â†’ { url, expiresAt }
+  - enforceRetention(policy: { bucket: string, days: number }) â†’ { ok: boolean }
+  - cleanupOrphans() â†’ { deleted: number }
+
+Adapters externos (interfaces)
+- openaiAdapter
+  - transcribeAudio(input: { path: string, language?: string }) â†’ { text: string, confidence?: number }
+  - generateText(input: { prompt: string, params?: object }) â†’ { output: string, usage?: object }
+- stripeAdapter/mpAdapter
+  - verifySignature(headers: object, body: string) â†’ { valid: boolean }
+  - createPaymentIntent(userId: string, plan_code: string) â†’ { intentId: string }
+  - parseEvent(body: string) â†’ PaymentEventDTO
+- emailAdapter
+  - send(to: string, template: string, data: object) â†’ { ok: boolean }
+
+PadrÃµes de erros, idempotÃªncia e correlaÃ§Ã£o
+- Erros
+  - Categorias: VAL (validaÃ§Ã£o), AUTH (autenticaÃ§Ã£o), PERM (permissÃ£o), BUS (negÃ³cio), INT (integraÃ§Ã£o), NET (rede).
+  - Formato: { code: string, message: string, details?: object, correlationId?: string } (ex.: { code: 'VAL_001', message: 'Formato invÃ¡lido' }).
+- IdempotÃªncia
+  - Header HTTP Idempotency-Key nos endpoints; em DB, UNIQUE (user_id, ref_type, ref_id) no ledger; cache de resposta no Edge para chaves repetidas.
+- CorrelaÃ§Ã£o
+  - X-Job-Id propagado entre Clientâ†”Edgeâ†”DB; todos os logs e mÃ©tricas incluem job_id.
+
+Plano de testes por mÃ³dulo (unit/integration)
+- authService: heurÃ­stica email/username, fluxos sucesso/falha, brute force (rate limit), reset por email/username.
+- profilesService: RLS owner-only (negado para outro usuÃ¡rio), VIEW pÃºblica sem PII.
+- projects/assets: polÃ­ticas owner-only, uploads assinados, validaÃ§Ã£o de tipo/tamanho.
+- transcriptions/transform/video: FSM de estados, idempotÃªncia, retries, exportaÃ§Ãµes (SRT/DOC/PDF), uso de brand_voice.
+- credits/payments: ledger justiÃ§a (saldo nÃ£o negativo), idempotÃªncia por ref/event_id, reconciliaÃ§Ã£o, assinaturas de webhooks.
+- notifications: assinatura Realtime, marcar lido/nÃ£o lido, agrupamento.
+- observability/rateLimit: scrub sem PII, sampling, bloqueio amigÃ¡vel em excesso de tentativas.
+
+APIs principais e seus endpoints (contratos v1)
+- TransformaÃ§Ã£o de texto:
+  - POST /api/transform/text â†’ cria job (queued) e retorna id
+  - GET /api/transform/text/:jobId â†’ status + outputs
+- TranscriÃ§Ã£o (Ã¡udio/vÃ­deo):
+  - POST /api/transcriptions â†’ cria job (queued)
+  - GET/PUT /api/transcriptions/:jobId â†’ status/resultado
+- VÃ­deos curtos:
+  - POST /api/transform/video â†’ cria job; outputs de cortes/legendas
+  - GET /api/transform/video/:jobId
+- Pagamentos/CrÃ©ditos:
+  - POST /api/credits/purchase â†’ inicia compra (cliente)
+  - POST /api/payments/webhooks â†’ processa evento (server), idempotente por event_id
+- Projetos/Assets:
+  - POST /api/projects, GET /api/projects
+  - POST /api/upload (signed URL), GET /api/assets/:id
+
+AutenticaÃ§Ã£o e Login (novos requisitos)
+- Login por nome de usuÃ¡rio (nÃ£o obrigatoriamente email):
+  - Edge Function POST /api/auth/username-login { username, password } â†’ resolve email por username (service role), executa sign-in no GoTrue, retorna session. Rate limit e auditoria.
+  - RPC pÃºblica (anon) auth_username_available(username) â†’ boolean (nÃ£o expÃµe email; apenas disponibilidade). Case-insensitive, normalizaÃ§Ã£o unicode.
+  - UI: campo Ãºnico "Login (email ou nome)" com aviso claro de unicidade; feedback de disponibilidade em tempo real.
+- Login com Google:
+  - Supabase Auth OAuth (provider: google) â†’ redirect e criaÃ§Ã£o de perfil mÃ­nimo via trigger.
+  - Linkagem de contas: se email jÃ¡ existente, unificar identidades sem duplicar perfis (ver triggers e funÃ§Ãµes admin).
+- Lembrar senha (mobile-first):
+  - PersistÃªncia de sessÃ£o (refresh token) jÃ¡ ativada no client.
+  - BotÃ£o "Lembrar senha": recomenda uso de gestor de senhas do sistema (autocomplete, credenciais salvas) e opÃ§Ã£o de WebAuthn/Passkeys futura.
+  - NUNCA salvar senha em localStorage/IndexedDB. Para conveniÃªncia, usar WebAuthn (passkey) ou biometria quando disponÃ­vel.
+  - Fluxo de "Esqueci minha senha": usar auth.resetPasswordForEmail para emails; para username, Edge Function envia email de reset ao endereÃ§o do usuÃ¡rio (sem expor o email ao cliente).
+
+IntegraÃ§Ã£o Frontend â†” Backend (contratos e adaptaÃ§Ã£o de UI)
+- Frontend (Auth.tsx + AuthContext.tsx):
+  - Unificar campo de login: aceitar "email ou nome de usuÃ¡rio". HeurÃ­stica: se contÃ©m "@" e domÃ­nio vÃ¡lido â†’ tratar como email (signInWithEmail). Caso contrÃ¡rio â†’ chamar Edge Function /api/auth/username-login.
+  - BotÃ£o "Entrar com Google": acionar supabase.auth.signInWithOAuth({ provider: 'google', options: { redirectTo } }), com feedback de carregamento e acessibilidade (aria-busy).
+  - BotÃ£o "Lembrar senha" (mobile-first):
+    - Priorizar uso do Password Manager do sistema (autofill/credential store) e exibir instruÃ§Ãµes claras para o usuÃ¡rio.
+    - Futura adoÃ§Ã£o de WebAuthn/Passkeys: exibir botÃ£o separado "Usar chave de acesso" quando suportado.
+    - NÃ£o armazenar senha no storage local; persistir sessÃ£o jÃ¡ habilitada (refreshToken). Em logout, limpar caches sem PII.
+  - Disponibilidade de username: exibir feedback em tempo real via RPC auth_username_available; normalizar input (lowercase e NFKC) antes da consulta.
+- Backend (Edge/DB):
+  - /api/auth/username-login: recebe { username, password } e retorna sessÃ£o; rate limit, auditoria (sem PII) e CORS. Lookup por profiles.username (lowercase), resolve email via admin API e executa sign-in no GoTrue.
+  - RPC auth_username_available(username): security definer; retorna boolean; aplica normalizaÃ§Ã£o e regras de nomes reservados.
+  - handle_new_user(): criar perfil mÃ­nimo com username Ãºnico derivado de meta/e-mail; VIEW public_profiles para exibiÃ§Ã£o segura.
+  - Google OAuth: triggers e funÃ§Ãµes administram criaÃ§Ã£o/linkagem de perfil sem duplicaÃ§Ã£o.
+
+Testes incrementais (Auth e UI)
+- Unit (React):
+  - AuthContext: estados de sessÃ£o, loadProfile, signUp, signOut (limpeza de caches sem PII).
+  - Componente Auth: heurÃ­stica email vs username; feedbacks acessÃ­veis (aria), botÃµes com estados (busy/disabled).
+- IntegraÃ§Ã£o (MSW + supabase stubs):
+  - Fluxo username-login: sucesso, username inexistente, senha invÃ¡lida, rate limit.
+  - Google OAuth: mock de redirecionamento/retorno; criaÃ§Ã£o de perfil via trigger.
+  - reset de senha: email e via username (Edge envia e-mail sem vazar endereÃ§o).
+- E2E (Playwright):
+  - CenÃ¡rio Login por username; Login por Google; Lembrar senha (autofill/gestor do OS); PersistÃªncia e logout com limpeza.
+  - Acessibilidade: foco visÃ­vel, labels, prefers-reduced-motion, alto contraste.
+
+Modelos de dados (DDL resumida)
+- profiles(id=auth.users.id, username text UNIQUE (lowercase), full_name, avatar_url, brand_voice jsonb, created_at, updated_at)
+- projects(id, user_id, name, description)
+- assets(id, project_id, user_id, storage_path, type enum, size_bytes, duration_seconds, mimetype, status enum)
+- transcriptions(id, asset_id, user_id, language, status enum, text, error, job_id)
+- transformations(id, project_id, source_asset_id?, user_id, type enum, params jsonb, outputs jsonb, status enum, error, cost_credits)
+- credits(user_id PK, balance)
+- credit_transactions(id, user_id, delta, reason, ref_type enum, ref_id, UNIQUE opcional (user_id, ref_type, ref_id))
+- subscriptions(id, user_id, plan_code, status enum, period_start, period_end)
+- usage_limits(id, user_id, metric, period_start, period_end, limit, used)
+- payments(id, user_id, provider, amount_cents, currency, status enum, event_id UNIQUE, metadata)
+- notifications(id, user_id, type, payload jsonb, read_at)
+- audit_logs(id, user_id, action, entity_type, entity_id, metadata jsonb)
+
+RelaÃ§Ãµes e Ã­ndices
+- FKs em user_id/project_id/asset_id; Ã­ndices (user_id, status, created_at); UNIQUE payments.event_id; GIN em jsonb quando necessÃ¡rio
+- OpÃ§Ã£o de particionamento mensal para transcriptions/transformations em alto volume
+
+PolÃ­ticas (RLS) e permissÃµes
+- PadrÃ£o owner-only: cada tabela com coluna user_id e polÃ­ticas de select/update/insert estritas (auth.uid() = user_id).
+- Perfis: por privacidade, select owner-only por padrÃ£o. Para exibiÃ§Ã£o pÃºblica (ex.: avatar/username), criar VIEW public_profiles com colunas seguras e permitir select para todos.
+- FunÃ§Ãµes security definer para:
+  - handle_new_user(): cria perfil mÃ­nimo (id, username default, full_name, avatar_url).
+  - username_suggest(base_name): gera sugestÃ£o Ãºnica com sufixo.
+  - auth_username_available(username): retorna disponibilidade (sem expor PII).
+  - set_updated_at(): trigger genÃ©rico.
+
+---
+
+## 3) ConsideraÃ§Ãµes de SeguranÃ§a
+
+AutenticaÃ§Ã£o e autorizaÃ§Ã£o
+- Supabase Auth (JWT); RLS ownerâ€‘only por padrÃ£o (user_id = auth.uid())
+- ExceÃ§Ãµes via roles de serviÃ§o (triggers/RPC em crÃ©ditos/pagamentos)
+ - Edge Function de username-login NÃƒO retorna email do usuÃ¡rio; auditar tentativas; aplicar rate limit por IP/username.
+ - Google OAuth: validar domÃ­nio permitido (se necessÃ¡rio), exigir email verificado; proteger contra takeover (linkagem de identidades existente).
+
+ProteÃ§Ã£o de dados
+- CSP restritiva no frontend; sanitizaÃ§Ã£o de HTML dinÃ¢mico (DOMPurify) via SafeHtml
+- PWA cache seguro: CacheFirst apenas para assets; NetworkOnly para /auth e /api; sem PII offline
+- Observabilidade com scrub: emails, tokens Bearer, UUIDs; sampling reduzido em prod
+
+Controles de acesso e auditoria
+- audit_logs para aÃ§Ãµes crÃ­ticas (pagamentos, alteraÃ§Ãµes de saldo, exclusÃµes)
+- Rate limits em RPCs sensÃ­veis (transform_text, transcribe_audio, payments)
+- Webhooks com validaÃ§Ã£o de assinatura (Stripe/Mercado Pago) e idempotÃªncia (event_id); janela de replay
+ - Auth logs: registrar tentativas de login por username (sucesso/fracasso), reset de senha, linkagem de Google; sem armazenar senha ou tokens em logs.
+
+---
+
+## 4) Cronograma de ImplementaÃ§Ã£o (Fases e DependÃªncias)
+
+Fase A â€” Arquitetura e DDL (2â€“3 dias)
+- [ ] Definir enums, tabelas, Ã­ndices, constraints
+- [ ] Criar migrations iniciais + ER diagram
+- [ ] Incluir em DDL: profiles.username UNIQUE (lower(username)), brand_voice jsonb, created_at/updated_at; funÃ§Ã£o set_updated_at().
+- [ ] Criar VIEW public_profiles (username, avatar_url) para leitura pÃºblica controlada.
+
+Fase B â€” RLS e Policies (1â€“2 dias)
+- [ ] Ativar RLS; ownerâ€‘only; exceÃ§Ãµes documentadas
+- [ ] Aplicar polÃ­ticas + testes de RLS
+- [ ] PolÃ­ticas de perfis: owner-only na tabela principal; select liberado na VIEW pÃºblica.
+- [ ] RPC auth_username_available(username) com execuÃ§Ã£o como security definer, expondo apenas disponibilidade.
+
+Fase C â€” Triggers e RPCs (3â€“4 dias)
+- [x] Ledger (credit_transactions â†’ credits), dÃ©bito idempotente em completed
+- [ ] RPCs: purchase_credits, create_transformation, mark_transcription_completed, dashboard_stats
+- [ ] FunÃ§Ãµes e triggers de Auth:
+  - [ ] handle_new_user(): perfil mÃ­nimo, geraÃ§Ã£o de username default (com sugestÃ£o Ãºnica).
+  - [x] set_updated_at_* para perfis e demais tabelas.
+  - [ ] username_suggest(base_name) e RPC de disponibilidade.
+- [x] Edge Function /api/auth/username-login (service role p/ lookup; sign-in via GoTrue; rate limit e auditoria).
+- [ ] Testes unitÃ¡rios de triggers/RPCs e integraÃ§Ã£o com DB
+
+Fase D â€” Storage e Upload (1â€“2 dias)
+- [x] Buckets privados; signed URLs; validaÃ§Ãµes
+- [ ] Testes de integraÃ§Ã£o (ownerâ€‘only + formatos)
+
+Fase E â€” Edge Functions e Endpoints (4â€“6 dias)
+- [x] transform_text (skeleton criado), [ ] transcribe_audio, [ ] video_short (mock inicial), [ ] payments/webhooks
+- [ ] Contratos v1 (OpenAPI); idempotÃªncia via cabeÃ§alho Idempotency-Key
+- [ ] E2E dos fluxos principais
+- [x] auth/username-login (com contrato e exemplos), [ ] brand-profiles CRUD, [x] assets/projects endpoints.
+
+Fase F â€” Pagamentos e Assinaturas (3â€“4 dias)
+- [ ] IntegraÃ§Ã£o com provider; reconciliaÃ§Ã£o; subscriptions
+- [ ] Testes (aprovado/negado/refund)
+
+Fase G â€” Observabilidade e SeguranÃ§a Complementar (2â€“3 dias)
+- [ ] Sentry/LogRocket (env); scrub; WAF/rate limit adicional
+- [ ] Testes de exceÃ§Ãµes sem PII; verificaÃ§Ã£o de logs
+
+Fase H â€” Performance e RetenÃ§Ã£o (2â€“3 dias)
+- [ ] Ãndices compostos; particionamento; retenÃ§Ã£o/arquivamento; limpeza de Ã³rfÃ£os
+- [ ] RelatÃ³rios de EXPLAIN ANALYZE e jobs de manutenÃ§Ã£o
+
+DependÃªncias entre tarefas
+- [ ] DDL â†’ RLS â†’ Triggers/RPCs â†’ Storage â†’ Edge â†’ Pagamentos â†’ Observabilidade â†’ Performance
+
+---
+
+## 5) Testes e ValidaÃ§Ã£o
+
+EstratÃ©gia de testes
+- [ ] Unit (SQL/RPC): triggers de ledger; RPCs (purchase_credits, create_transformation, mark_transcription_completed)
+- [ ] IntegraÃ§Ã£o: RLS ownerâ€‘only; Edge + DB; webhooks com assinatura/idempotÃªncia
+- [ ] Edge/Auth:
+  - [ ] username-login: testes de sucesso, falha (username inexistente, senha invÃ¡lida), rate limit, auditoria.
+  - [ ] Google OAuth: criaÃ§Ã£o de perfil por trigger; linkagem de contas; session persist.
+  - [ ] reset de senha: fluxo para email; para username, Edge encaminha reset para o email vinculado sem expor.
+- [ ] E2E: Texto â†’ Post; Ãudio â†’ TranscriÃ§Ã£o; Payment â†’ CrÃ©ditos; assinaturas
+- [ ] Carga: k6 para endpoints principais; EXPLAIN ANALYZE para consultas de dashboards
+
+CritÃ©rios de aceitaÃ§Ã£o
+- [ ] DDL/RLS aplicadas e auditadas; triggers/RPCs com 95%+ de cobertura unit
+- [ ] Fluxos e2e passam com idempotÃªncia e sem PII em logs; cache offline nÃ£o serve dados sensÃ­veis
+- [ ] LatÃªncia de consultas principais dentro de SLOs do PRD
+
+Deploy e rollback
+- [ ] CI/CD (GitHub Actions): lint, unit/integration/e2e, apply migrations com plano de rollback
+- [ ] Migrations versionadas (supabase CLI); rollback testado em test env
+- [ ] Feature flags para mÃ³dulos (transcription, video shorts, payments) por ambiente
+- [ ] Auth feature flags: habilitar username-login e view pÃºblica de perfis por ambiente (dev/test inicialmente; prod quando auditado).
+
+---
+
+## Regras de ImplementaÃ§Ã£o e Testabilidade (aplicaÃ§Ã£o contÃ­nua)
+- [x] Divida implementaÃ§Ãµes complexas em etapas incrementais testÃ¡veis individualmente.
+- [x] Para cada soluÃ§Ã£o proposta, inclua testes unitÃ¡rios e de integraÃ§Ã£o.
+- [x] Projete cÃ³digo para testes automatizados, com dependÃªncias claras e isolÃ¡veis (services/adapters + hooks por interfaces).
+- [x] Considere edge cases: limites de uso, idempotÃªncia de pagamentos, falhas de AI/Edge, cancelamentos, storage Ã³rfÃ£o.
+- [x] Identifique partes que merecem testes especÃ­ficos: ledger (justiÃ§a), idempotÃªncia (duplicidades), RLS (privacidade), pipeline de jobs (confiabilidade), storage policies (ownerâ€‘only).
+
+---
+
+## ApÃªndices
+- [ ] DDL detalhada por tabela e RPCs (anexos tÃ©cnicos)
+- [ ] OpenAPI v1 dos endpoints
+- [x] ADRs (decisÃµes: RLS, ledger, idempotÃªncia, retenÃ§Ã£o)
+
+Anexo tÃ©cnico â€” DDL/Auth (rascunho)
+- [x] profiles
+  - [x] id uuid primary key references auth.users(id) on delete cascade
+  - [x] username text not null
+  - [x] full_name text
+  - [x] avatar_url text
+  - [x] brand_voice jsonb
+  - [x] created_at timestamptz default now()
+  - [x] updated_at timestamptz default now()
+  - [x] constraint profiles_username_unique unique (lower(username))
+- FunÃ§Ãµes
+  - [x] set_updated_at(): BEFORE UPDATE â†’ new.updated_at = now()
+  - [ ] handle_new_user(): cria perfil com username default (derivado de meta ou email local), assegura unicidade pelo sufixo
+  - [ ] username_suggest(base_name): retorna sugestÃ£o Ãºnica (base + "-" + shortid)
+  - [x] auth_username_available(username): returns boolean; security definer; expÃµe apenas disponibilidade
+- PolÃ­ticas
+  - [x] perfis: select/update owner-only; insert via trigger; VIEW public_profiles com colunas seguras para leitura geral
+- Edge Function
+  - [x] POST /api/auth/username-login: resolve usernameâ†’email (service role), chama GoTrue password grant, retorna sessÃ£o
+  - [x] Rate limit e audit trail (sem password/tokens em logs)
+
+Checklist de prÃ©-implantaÃ§Ã£o (banco vazio)
+- [x] Atualizar supabase/config.toml com project_id = "giozhrukzcqoopssegby"
+- [x] Validar SUPABASE_URL/keys por ambiente (dev/test/prod); configurar VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY no .env local
+- [ ] supabase login (token pessoal) e supabase link --project-ref giozhrukzcqoopssegby
+- [x] Aplicar migraÃ§Ãµes iniciais (db push): profiles (com username), projects, assets, transcriptions, transformations, credits, storage buckets, funÃ§Ãµes/triggers set_updated_at
+- [x] Criar VIEW public_profiles e RPC auth_username_available
+- [x] Implementar Edge Function auth/username-login e publicar
+- [ ] Testes: RLS (owner-only), username-login (sucesso/falha), Google OAuth, reset de senha
+- [x] Observabilidade: eventos de auth sem PII; rate limit em username-login
+- [x] DocumentaÃ§Ã£o: contratos OpenAPI de auth/username-login; ADR de decisÃ£o (username login via Edge)
+

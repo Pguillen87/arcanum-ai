@@ -7,11 +7,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Mail, Lock, User } from "lucide-react";
+import { Mail, Lock, User, Sparkles, MoonStar, Atom, Zap, FileText, Mic, Video, Wand2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { RuneIcon } from "@/components/cosmic/RuneIcon";
 
 const passwordSchema = z
   .string()
@@ -119,7 +120,7 @@ const Auth = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden flex items-center justify-center">
+    <div className="min-h-screen bg-background relative overflow-hidden flex items-center justify-center auth-container">
       {/* Cosmic background effects */}
       <div className="fixed inset-0 -z-10">
         <div className="absolute inset-0 gradient-aurora" />
@@ -133,25 +134,68 @@ const Auth = () => {
 
       <div className="container mx-auto px-4 py-16 max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center gap-3 px-4 py-2 rounded-lg shadow-lg glass-cosmic">
-            <WizardHatIcon className="w-6 h-6 md:w-7 md:h-7 text-primary" />
-            <h2 className="text-lg md:text-xl font-semibold gradient-cosmic bg-clip-text text-transparent">
-              Arcanum AI – Laboratório de Transmutação de Conteúdo
-            </h2>
+          <div className="inline-flex flex-col items-center gap-3 px-6 py-5 rounded-lg shadow-lg glass-cosmic relative group">
+            {/* Glow effect ao redor do ícone */}
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-yellow-400/20 via-purple-400/20 to-pink-400/20 opacity-0 group-hover:opacity-100 transition-opacity duration-500 blur-xl" />
+            
+            <div className="relative z-10">
+              <WizardHatIcon className="w-16 h-16 md:w-20 md:h-20 lg:w-24 lg:h-24 text-primary animate-rune-pulse mb-3 drop-shadow-[0_0_15px_rgba(139,92,246,0.5)]" />
+            </div>
+            
+            <h1 className="relative inline-block z-10">
+              <span className="bg-gradient-to-r from-primary via-purple-400 to-primary bg-[length:200%_100%] bg-clip-text text-transparent text-3xl md:text-4xl font-bold animate-shine">
+                Arcanum AI
+              </span>
+              <span className="block text-sm md:text-base text-muted-foreground mt-1">
+                Laboratório de Transmutação de Conteúdo
+              </span>
+            </h1>
           </div>
         </div>
 
-        <CosmicCard glow>
-          <div className="space-y-6">
-            <div className="text-center">
-              <h2 className="text-2xl font-bold mb-2">
-                {isLogin ? "Bem-vindo de volta" : "Criar sua conta"}
-              </h2>
-              <p className="text-muted-foreground text-sm">
-                {isLogin
-                  ? "Abra o Portal para acessar seus portais místicos"
-                  : "Comece sua jornada criativa"}
-              </p>
+        <CosmicCard glow className="relative">
+          {/* Runas decorativas nos cantos */}
+          <div className="absolute -top-2 -left-2 z-10">
+            <RuneIcon icon={Sparkles} size="sm" animated />
+          </div>
+          <div className="absolute -top-2 -right-2 z-10">
+            <RuneIcon icon={MoonStar} size="sm" animated />
+          </div>
+          <div className="absolute -bottom-2 -left-2 z-10">
+            <RuneIcon icon={Atom} size="sm" animated />
+          </div>
+          <div className="absolute -bottom-2 -right-2 z-10">
+            <RuneIcon icon={Zap} size="sm" animated />
+          </div>
+          
+          <div className="space-y-6 relative z-0">
+            <div className="text-center space-y-4">
+              <div className="space-y-3 md:space-y-4">
+                <h2 className="text-3xl md:text-4xl lg:text-5xl font-extrabold bg-gradient-to-r from-yellow-400 via-purple-400 via-pink-400 to-yellow-400 bg-[length:200%_100%] bg-clip-text text-transparent animate-shine tracking-tight leading-[1.1] px-2">
+                  {isLogin ? "Crie 10x mais conteúdo sem perder sua voz única" : "Inicie sua jornada arcana"}
+                </h2>
+                <p className="text-muted-foreground text-base md:text-lg max-w-lg mx-auto leading-relaxed px-4 font-medium">
+                  {isLogin
+                    ? "Transforme um único texto, áudio ou vídeo em posts, newsletters, resumos e vídeos curtos. A magia da IA preserva seu estilo enquanto multiplica sua produtividade."
+                    : "Entre no portal da transmutação e descubra o poder da criação digital"}
+                </p>
+              </div>
+
+              {/* Recursos principais - Grid visual */}
+              <div className="grid grid-cols-3 gap-3 md:gap-4 mt-6 max-w-md mx-auto">
+                <div className="flex flex-col items-center gap-2 p-3 rounded-lg glass-cosmic border border-primary/20 hover:border-primary/40 transition-all">
+                  <FileText className="w-5 h-5 md:w-6 md:h-6 text-primary" />
+                  <span className="text-xs md:text-sm text-center font-medium">Texto → Posts</span>
+                </div>
+                <div className="flex flex-col items-center gap-2 p-3 rounded-lg glass-cosmic border border-primary/20 hover:border-primary/40 transition-all">
+                  <Mic className="w-5 h-5 md:w-6 md:h-6 text-primary" />
+                  <span className="text-xs md:text-sm text-center font-medium">Áudio → Transcrição</span>
+                </div>
+                <div className="flex flex-col items-center gap-2 p-3 rounded-lg glass-cosmic border border-primary/20 hover:border-primary/40 transition-all">
+                  <Video className="w-5 h-5 md:w-6 md:h-6 text-primary" />
+                  <span className="text-xs md:text-sm text-center font-medium">Vídeo → Cortes</span>
+                </div>
+              </div>
             </div>
 
             {/* Abas para Login/Cadastro */}
@@ -174,7 +218,7 @@ const Auth = () => {
 
             {/* Email/Password Form */}
             {isLogin ? (
-              <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-4" aria-label="Formulário de login">
+              <form onSubmit={handleLoginSubmit(onLoginSubmit)} className="space-y-4 transition-opacity duration-300" aria-label="Formulário de login">
                 <div className="space-y-2">
                   <Label htmlFor="login">Email ou Nome de Usuário</Label>
                   <div className="relative">
@@ -183,7 +227,7 @@ const Auth = () => {
                       id="login"
                       type="text"
                       placeholder="seu@email.com ou seu_usuario"
-                      className="pl-10"
+                      className="pl-10 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
                       autoComplete="username"
                       aria-invalid={!!loginErrors.login}
                       aria-describedby={loginErrors.login ? "login-input-error" : undefined}
@@ -207,7 +251,7 @@ const Auth = () => {
                       id="password"
                       type="password"
                       placeholder="••••••••"
-                      className="pl-10"
+                      className="pl-10 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
                       autoComplete="current-password"
                       aria-invalid={!!loginErrors.password}
                       aria-describedby={loginErrors.password ? "login-password-error" : undefined}
@@ -235,17 +279,36 @@ const Auth = () => {
                   </Label>
                 </div>
 
-                {/* Ações: botão Entrar ampliado e botão Google abaixo, centralizados */}
+                {/* Ações: botão Entrar e botão Google abaixo, centralizados */}
                 <div className="flex flex-col items-center gap-3">
                   <CosmicButton
                     type="submit"
                     mystical
-                    className="w-full h-14 md:h-16 text-lg md:text-xl shadow-sm hover:shadow transition justify-center"
+                    className="relative overflow-hidden group w-full h-12 text-base shadow-sm hover:shadow transition justify-center cosmic-button-glow"
                     disabled={isLoginSubmitting}
                     aria-busy={isLoginSubmitting}
                     aria-label="Abrir o Portal"
                   >
-                    {isLoginSubmitting ? "Abrindo o Portal..." : "Abrir o Portal"}
+                    {/* Glow effect interno - shimmer */}
+                    <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+                    
+                    {/* Conteúdo */}
+                    <span className="relative z-10 flex items-center justify-center gap-2">
+                      {isLoginSubmitting ? (
+                        <>
+                          <RuneIcon icon={Sparkles} size="sm" />
+                          <span>Abrindo o Portal...</span>
+                        </>
+                      ) : (
+                        <>
+                          <RuneIcon icon={Sparkles} size="sm" />
+                          <span>Abrir o Portal</span>
+                        </>
+                      )}
+                    </span>
+                    
+                    {/* Brilho nas bordas */}
+                    <div className="absolute inset-0 rounded-full border-2 border-primary/50 group-hover:border-primary transition-all opacity-0 group-hover:opacity-100 pointer-events-none" />
                   </CosmicButton>
                   
                   <div className="relative w-full">
@@ -282,7 +345,7 @@ const Auth = () => {
                 )}
               </form>
             ) : (
-              <form onSubmit={handleSignupSubmit(onSignupSubmit)} className="space-y-4" aria-label="Formulário de cadastro">
+              <form onSubmit={handleSignupSubmit(onSignupSubmit)} className="space-y-4 transition-opacity duration-300" aria-label="Formulário de cadastro">
                 <div className="space-y-2">
                   <Label htmlFor="fullName">Nome Completo</Label>
                   <div className="relative">
@@ -291,7 +354,7 @@ const Auth = () => {
                       id="fullName"
                       type="text"
                       placeholder="Seu nome completo"
-                      className="pl-10"
+                      className="pl-10 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
                       autoComplete="name"
                       ref={signupNameRef}
                       {...registerSignup("fullName")}
@@ -310,7 +373,7 @@ const Auth = () => {
                       id="signup-email"
                       type="email"
                       placeholder="seu@email.com"
-                      className="pl-10"
+                      className="pl-10 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
                       autoComplete="email"
                       aria-invalid={!!signupErrors.email}
                       aria-describedby={signupErrors.email ? "signup-email-error" : undefined}
@@ -330,7 +393,7 @@ const Auth = () => {
                       id="signup-password"
                       type="password"
                       placeholder="••••••••"
-                      className="pl-10"
+                      className="pl-10 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
                       autoComplete="new-password"
                       aria-invalid={!!signupErrors.password}
                       aria-describedby={signupErrors.password ? "signup-password-error" : undefined}
@@ -350,7 +413,7 @@ const Auth = () => {
                       id="signup-confirm-password"
                       type="password"
                       placeholder="••••••••"
-                      className="pl-10"
+                      className="pl-10 focus:ring-2 focus:ring-primary/50 focus:border-primary/50 transition-all"
                       autoComplete="new-password"
                       aria-invalid={!!signupErrors.confirmPassword}
                       aria-describedby={signupErrors.confirmPassword ? "signup-confirm-error" : undefined}
@@ -365,12 +428,31 @@ const Auth = () => {
                 <CosmicButton
                   type="submit"
                   mystical
-                  className="w-full shadow-sm hover:shadow transition"
+                  className="relative overflow-hidden group w-full shadow-sm hover:shadow transition cosmic-button-glow"
                   disabled={isSignupSubmitting}
                   aria-busy={isSignupSubmitting}
                   aria-label="Criar conta"
                 >
-                  {isSignupSubmitting ? "Criando conta..." : "Criar conta"}
+                  {/* Glow effect interno - shimmer */}
+                  <span className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
+                  
+                  {/* Conteúdo */}
+                  <span className="relative z-10 flex items-center justify-center gap-2">
+                    {isSignupSubmitting ? (
+                      <>
+                        <RuneIcon icon={Sparkles} size="sm" />
+                        <span>Criando conta...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RuneIcon icon={Sparkles} size="sm" />
+                        <span>Criar conta</span>
+                      </>
+                    )}
+                  </span>
+                  
+                  {/* Brilho nas bordas */}
+                  <div className="absolute inset-0 rounded-full border-2 border-primary/50 group-hover:border-primary transition-all opacity-0 group-hover:opacity-100 pointer-events-none" />
                 </CosmicButton>
 
                 {authError && (
@@ -386,13 +468,23 @@ const Auth = () => {
                 className="text-primary hover:underline"
               >
                 {isLogin
-                  ? "Não tem uma conta? Cadastre-se"
+                  ? "Não tem uma conta? Inicie sua jornada arcana"
                   : "Já tem uma conta? Abra o Portal"}
               </button>
             </div>
           </div>
         </CosmicCard>
       </div>
+
+      {/* Rodapé */}
+      <footer className="absolute bottom-4 left-0 right-0 text-center z-10">
+        <p className="text-sm text-muted-foreground">
+          Desenvolvido com <span className="text-primary">✨</span> por{" "}
+          <span className="font-semibold gradient-cosmic bg-clip-text text-transparent">
+            Guillen Ia
+          </span>
+        </p>
+      </footer>
     </div>
   );
 };
@@ -411,7 +503,7 @@ const GoogleIcon = ({ className = "" }: { className?: string }) => (
   </svg>
 );
 
-// Ícone simples de chapéu de mago para o cabeçalho
+// Ícone melhorado do chapéu de mago - maior e mais impactante
 const WizardHatIcon = ({ className = "" }: { className?: string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
@@ -419,14 +511,60 @@ const WizardHatIcon = ({ className = "" }: { className?: string }) => (
     className={className}
     aria-hidden="true"
   >
-    {/* Chapéu (triângulo) */}
-    <path d="M32 8 L12 44 H52 Z" fill="currentColor" opacity="0.95" />
+    <defs>
+      {/* Gradiente dourado/violeta para o chapéu */}
+      <linearGradient id="hat-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="hsl(270, 70%, 60%)" />
+        <stop offset="50%" stopColor="hsl(45, 90%, 60%)" />
+        <stop offset="100%" stopColor="hsl(270, 70%, 60%)" />
+      </linearGradient>
+      {/* Glow filter */}
+      <filter id="hat-glow">
+        <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+        <feMerge>
+          <feMergeNode in="coloredBlur" />
+          <feMergeNode in="SourceGraphic" />
+        </feMerge>
+      </filter>
+    </defs>
+    
+    {/* Chapéu (triângulo) com gradiente */}
+    <path 
+      d="M32 8 L12 44 H52 Z" 
+      fill="url(#hat-gradient)" 
+      opacity="0.95"
+      filter="url(#hat-glow)"
+    />
+    
     {/* Aba do chapéu */}
-    <rect x="10" y="44" width="44" height="6" rx="3" fill="currentColor" opacity="0.8" />
-    {/* Detalhe estrela */}
-    <circle cx="26" cy="26" r="2" fill="#FFD54F" />
-    <circle cx="36" cy="22" r="1.8" fill="#4FC3F7" />
-    <circle cx="30" cy="30" r="1.6" fill="#81C784" />
+    <rect 
+      x="10" 
+      y="44" 
+      width="44" 
+      height="6" 
+      rx="3" 
+      fill="url(#hat-gradient)" 
+      opacity="0.8"
+    />
+    
+    {/* Estrelas brilhantes melhoradas */}
+    <circle cx="26" cy="26" r="2.5" fill="#FFD54F" opacity="0.9">
+      <animate attributeName="opacity" values="0.9;1;0.9" dur="2s" repeatCount="indefinite" />
+    </circle>
+    <circle cx="36" cy="22" r="2" fill="#4FC3F7" opacity="0.9">
+      <animate attributeName="opacity" values="0.9;1;0.9" dur="2.5s" repeatCount="indefinite" />
+    </circle>
+    <circle cx="30" cy="30" r="2" fill="#81C784" opacity="0.9">
+      <animate attributeName="opacity" values="0.9;1;0.9" dur="2.2s" repeatCount="indefinite" />
+    </circle>
+    
+    {/* Partículas mágicas adicionais */}
+    <circle cx="20" cy="20" r="1" fill="#FFD54F" opacity="0.6">
+      <animate attributeName="opacity" values="0.3;0.8;0.3" dur="3s" repeatCount="indefinite" />
+    </circle>
+    <circle cx="44" cy="18" r="1" fill="#CE93D8" opacity="0.6">
+      <animate attributeName="opacity" values="0.3;0.8;0.3" dur="2.8s" repeatCount="indefinite" />
+    </circle>
   </svg>
 );
 

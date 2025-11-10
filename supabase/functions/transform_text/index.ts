@@ -3,6 +3,7 @@
 // Requer SUPABASE_URL, SUPABASE_SERVICE_ROLE e OPENAI_API_KEY no ambiente
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { buildTransformPrompt, buildBrandVoiceFromCharacter as buildBVFromCharacter, applyBrandVoice as applyBV } from "../_shared/promptEngine.ts";
 
 const url = Deno.env.get("SUPABASE_URL")!;
 const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE")!;
@@ -23,9 +24,10 @@ interface TransformParams {
   inputText?: string;
   sourceAssetId?: string;
   tone?: string;
-  length?: "short" | "long";
+  length?: "short" | "medium" | "long";
   idempotencyKey?: string;
   brandVoice?: any;
+  characterId?: string; // Novo: suporte para characters
 }
 
 // Scrub PII para logs
@@ -54,77 +56,20 @@ function auditLog(event: string, metadata: Record<string, any> = {}) {
 
 // Construir prompt baseado no tipo de transformação
 function buildPrompt(params: TransformParams, inputText: string): string {
-  const typePrompts: Record<TransformationType, string> = {
-    post: "Transforme o seguinte texto em um post para redes sociais, mantendo a essência e tornando-o envolvente e conciso.",
-    resumo: "Crie um resumo objetivo e claro do seguinte texto, destacando os pontos principais.",
-    newsletter: "Transforme o seguinte conteúdo em uma newsletter profissional e informativa, com estrutura clara e tom adequado.",
-    roteiro: "Crie um roteiro estruturado baseado no seguinte conteúdo, com cenas, diálogos e direções quando apropriado.",
-  };
+  // Encaminha para o motor compartilhado
+  return buildTransformPrompt({ type: params.type, tone: params.tone, length: params.length }, inputText);
+}
 
-  const basePrompt = typePrompts[params.type] || typePrompts.post;
-  const lengthInstruction = params.length === "short" ? " Mantenha o conteúdo conciso." : " Pode ser mais detalhado.";
-  const toneInstruction = params.tone ? ` Use um tom ${params.tone}.` : "";
-
-  return `${basePrompt}${lengthInstruction}${toneInstruction}\n\nTexto original:\n${inputText}`;
+// Construir brandVoice a partir de character
+function buildBrandVoiceFromCharacter(character: any): any {
+  // Encaminha para o motor compartilhado
+  return buildBVFromCharacter(character);
 }
 
 // Aplicar Voz da Marca ao prompt
 function applyBrandVoice(prompt: string, brandVoice: any): string {
-  if (!brandVoice || typeof brandVoice !== 'object') return prompt;
-
-  const tone = brandVoice.tone || "";
-  const style = brandVoice.style || "";
-  const examples = brandVoice.examples || [];
-  const preferences = brandVoice.preferences || {};
-
-  let enhancedPrompt = prompt;
-  let brandInstructions = [];
-
-  if (tone) {
-    brandInstructions.push(`Tom: ${tone}`);
-  }
-
-  if (style) {
-    brandInstructions.push(`Estilo: ${style}`);
-  }
-
-  // Aplicar preferências
-  if (preferences.length) {
-    const lengthMap: Record<string, string> = {
-      short: "conciso e direto",
-      medium: "equilibrado",
-      long: "detalhado e completo"
-    };
-    brandInstructions.push(`Tamanho preferido: ${lengthMap[preferences.length] || 'equilibrado'}`);
-  }
-
-  if (preferences.formality) {
-    const formalityMap: Record<string, string> = {
-      formal: "formal e profissional",
-      neutral: "neutro",
-      casual: "casual e descontraído"
-    };
-    brandInstructions.push(`Formalidade: ${formalityMap[preferences.formality] || 'neutro'}`);
-  }
-
-  if (preferences.creativity) {
-    const creativityMap: Record<string, string> = {
-      low: "mais direto e objetivo",
-      medium: "equilibrado",
-      high: "mais criativo e inovador"
-    };
-    brandInstructions.push(`Criatividade: ${creativityMap[preferences.creativity] || 'equilibrado'}`);
-  }
-
-  if (brandInstructions.length > 0) {
-    enhancedPrompt = `Voz da Marca:\n${brandInstructions.join("\n")}\n\n${enhancedPrompt}`;
-  }
-
-  if (examples.length > 0) {
-    enhancedPrompt = `Exemplos de textos no estilo desejado:\n${examples.slice(0, 3).join("\n\n")}\n\n${enhancedPrompt}`;
-  }
-
-  return enhancedPrompt;
+  // Encaminha para o motor compartilhado
+  return applyBV(prompt, brandVoice);
 }
 
 // Chamar OpenAI API
@@ -307,9 +252,26 @@ serve(async (req: Request): Promise<Response> => {
       .update({ status: "processing" })
       .eq("id", transformationId);
 
-    // Buscar brand_voice do perfil do usuário se não fornecido
+    // Buscar character ou brand_voice
     let brandVoice = params.brandVoice;
-    if (!brandVoice) {
+    let character = null;
+
+    // Prioridade: characterId > brandVoice > profile brand_voice
+    if (params.characterId) {
+      const { data: char } = await admin
+        .from("characters")
+        .select("*")
+        .eq("id", params.characterId)
+        .eq("user_id", project.user_id)
+        .single();
+      
+      if (char) {
+        character = char;
+        // Converter character para formato brandVoice compatível
+        brandVoice = buildBrandVoiceFromCharacter(char);
+      }
+    } else if (!brandVoice) {
+      // Fallback: buscar brand_voice do perfil do usuário
       const { data: profile } = await admin
         .from("profiles")
         .select("brand_voice")
@@ -376,6 +338,19 @@ serve(async (req: Request): Promise<Response> => {
     if (debitError) {
       auditLog("transform_text_debit_failed", { transformationId, error: debitError });
       // Não falhar o job se débito falhar (será reconciliado depois)
+    } else {
+      // Criar notificação de créditos debitados
+      await admin.from("notifications").insert({
+        user_id: project.user_id,
+        type: "credits_debited",
+        payload: {
+          amount: costCredits,
+          reason: `Transformação ${params.type}`,
+          refType: "transformation",
+          refId: transformationId,
+          message: `${costCredits} crédito(s) debitado(s) pela transformação`,
+        },
+      }).catch(() => {}); // Ignorar erro se não conseguir criar notificação
     }
 
     const duration = Date.now() - startTime;

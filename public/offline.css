@@ -1,0 +1,47 @@
+html, body {
+  height: 100%;
+}
+body {
+  margin: 0;
+  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, sans-serif;
+  color: #f5f3ff;
+  background: radial-gradient(circle at 50% 50%, rgba(139,92,246,0.6) 0%, rgba(139,92,246,0) 70%),
+              linear-gradient(135deg, rgb(139,92,246) 0%, rgb(234,179,8) 100%);
+  background-attachment: fixed;
+}
+.container {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+}
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 9999px;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.12);
+  margin-bottom: 1.5rem;
+}
+h1 {
+  font-size: 2rem;
+  margin: 0 0 0.75rem 0;
+}
+p {
+  max-width: 42rem;
+  opacity: 0.9;
+}
+.tips {
+  list-style: none;
+  padding: 0;
+  margin-top: 1rem;
+  opacity: 0.85;
+}
+.tips li { margin: 0.25rem 0; }
+

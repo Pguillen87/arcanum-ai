@@ -39,14 +39,43 @@ All colors MUST be HSL.
 
     --radius: 1rem;
 
-    /* Cosmic gradients */
-    --gradient-cosmic: linear-gradient(135deg, hsl(270 70% 60%) 0%, hsl(45 90% 60%) 100%);
-    --gradient-aurora: linear-gradient(180deg, hsl(270 70% 60% / 0.1) 0%, hsl(270 70% 60% / 0) 100%);
-    --gradient-orb: radial-gradient(circle at 50% 50%, hsl(270 70% 60% / 0.4) 0%, hsl(270 70% 60% / 0) 70%);
+    /* 7 Raios da Fraternidade Branca - Variáveis HSL */
+    --ray-violet: 270 70% 60%;  /* 7º Raio - Principal (Transmutação) */
+    --ray-blue: 210 80% 55%;    /* 1º Raio (Vontade Divina, Proteção) */
+    --ray-gold: 45 90% 60%;     /* 2º Raio (Sabedoria, Iluminação) */
+    --ray-pink: 340 75% 65%;    /* 3º Raio (Amor Divino, Compaixão) */
+    --ray-white: 0 0% 98%;      /* 4º Raio (Pureza, Ascensão) */
+    --ray-green: 150 60% 50%;   /* 5º Raio (Cura, Verdade) */
+    --ray-ruby: 0 70% 55%;      /* 6º Raio (Graça, Devoção) */
+
+    /* Cosmic gradients - Baseados nos 7 Raios */
+    --gradient-cosmic: linear-gradient(135deg, hsl(var(--ray-violet)) 0%, hsl(var(--ray-gold)) 50%, hsl(var(--ray-violet)) 100%);
+    --gradient-aurora: radial-gradient(ellipse 120% 100% at 50% 0%, 
+      hsl(var(--ray-violet) / 0.08) 0%, 
+      hsl(var(--ray-blue) / 0.06) 20%, 
+      hsl(var(--ray-pink) / 0.05) 40%, 
+      hsl(var(--ray-gold) / 0.04) 60%, 
+      hsl(var(--ray-green) / 0.03) 80%, 
+      transparent 100%);
+    --gradient-orb: radial-gradient(circle at 50% 50%, hsl(var(--ray-violet) / 0.4) 0%, hsl(var(--ray-violet) / 0) 70%);
     
-    /* Glow effects */
-    --glow-violet: 0 0 40px hsl(270 70% 60% / 0.5);
-    --glow-gold: 0 0 40px hsl(45 90% 60% / 0.5);
+    /* Gradientes específicos por área */
+    --gradient-essencia: linear-gradient(135deg, hsl(var(--ray-gold)) 0%, hsl(var(--ray-violet)) 100%);
+    --gradient-energia: linear-gradient(135deg, hsl(var(--ray-violet)) 0%, hsl(var(--ray-blue)) 100%);
+    --gradient-protecao: linear-gradient(135deg, hsl(var(--ray-blue)) 0%, hsl(var(--ray-green)) 100%);
+    --gradient-cosmos: radial-gradient(ellipse at center, 
+      hsl(var(--ray-violet) / 0.3) 0%, 
+      hsl(var(--ray-white) / 0.2) 30%, 
+      hsl(var(--ray-blue) / 0.15) 60%, 
+      transparent 100%);
+    
+    /* Glow effects para cada raio */
+    --glow-violet: 0 0 40px hsl(var(--ray-violet) / 0.5);
+    --glow-blue: 0 0 40px hsl(var(--ray-blue) / 0.5);
+    --glow-gold: 0 0 40px hsl(var(--ray-gold) / 0.5);
+    --glow-pink: 0 0 40px hsl(var(--ray-pink) / 0.5);
+    --glow-green: 0 0 40px hsl(var(--ray-green) / 0.5);
+    --glow-ruby: 0 0 40px hsl(var(--ray-ruby) / 0.5);
     
     /* Transitions */
     --transition-cosmic: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
@@ -82,14 +111,59 @@ All colors MUST be HSL.
     --input: 270 40% 20%;
     --ring: 270 70% 60%;
 
-    /* Enhanced cosmic gradients for dark mode */
-    --gradient-cosmic: linear-gradient(135deg, hsl(270 70% 60%) 0%, hsl(45 90% 60%) 100%);
-    --gradient-aurora: linear-gradient(180deg, hsl(270 70% 60% / 0.15) 0%, hsl(270 70% 60% / 0) 100%);
-    --gradient-orb: radial-gradient(circle at 50% 50%, hsl(270 70% 60% / 0.6) 0%, hsl(270 70% 60% / 0) 70%);
+    /* Enhanced cosmic gradients for dark mode - Todos os 7 Raios */
+    --gradient-cosmic: linear-gradient(135deg, hsl(var(--ray-violet)) 0%, hsl(var(--ray-gold)) 50%, hsl(var(--ray-violet)) 100%);
+    --gradient-aurora: radial-gradient(ellipse 120% 100% at 50% 0%, 
+      hsl(var(--ray-violet) / 0.12) 0%, 
+      hsl(var(--ray-blue) / 0.10) 15%, 
+      hsl(var(--ray-pink) / 0.08) 30%, 
+      hsl(var(--ray-gold) / 0.06) 45%, 
+      hsl(var(--ray-green) / 0.05) 60%, 
+      hsl(var(--ray-ruby) / 0.04) 75%, 
+      hsl(var(--ray-white) / 0.03) 90%, 
+      transparent 100%);
+    --gradient-orb: radial-gradient(circle at 50% 50%, hsl(var(--ray-violet) / 0.6) 0%, hsl(var(--ray-violet) / 0) 70%);
     
-    /* Enhanced glow effects for dark mode */
-    --glow-violet: 0 0 60px hsl(270 70% 60% / 0.8), 0 0 100px hsl(270 70% 60% / 0.4);
-    --glow-gold: 0 0 60px hsl(45 90% 60% / 0.8), 0 0 100px hsl(45 90% 60% / 0.4);
+    /* Gradientes específicos por área - Dark mode */
+    --gradient-essencia: linear-gradient(135deg, hsl(var(--ray-gold)) 0%, hsl(var(--ray-violet)) 100%);
+    --gradient-energia: linear-gradient(135deg, hsl(var(--ray-violet)) 0%, hsl(var(--ray-blue)) 100%);
+    --gradient-protecao: linear-gradient(135deg, hsl(var(--ray-blue)) 0%, hsl(var(--ray-green)) 100%);
+    --gradient-cosmos: radial-gradient(ellipse at center, 
+      hsl(var(--ray-violet) / 0.4) 0%, 
+      hsl(var(--ray-white) / 0.3) 30%, 
+      hsl(var(--ray-blue) / 0.2) 60%, 
+      transparent 100%);
+    
+    /* Enhanced glow effects for dark mode - Todos os raios */
+    --glow-violet: 0 0 60px hsl(var(--ray-violet) / 0.8), 0 0 100px hsl(var(--ray-violet) / 0.4);
+    --glow-blue: 0 0 60px hsl(var(--ray-blue) / 0.8), 0 0 100px hsl(var(--ray-blue) / 0.4);
+    --glow-gold: 0 0 60px hsl(var(--ray-gold) / 0.8), 0 0 100px hsl(var(--ray-gold) / 0.4);
+    --glow-pink: 0 0 60px hsl(var(--ray-pink) / 0.8), 0 0 100px hsl(var(--ray-pink) / 0.4);
+    --glow-green: 0 0 60px hsl(var(--ray-green) / 0.8), 0 0 100px hsl(var(--ray-green) / 0.4);
+    --glow-ruby: 0 0 60px hsl(var(--ray-ruby) / 0.8), 0 0 100px hsl(var(--ray-ruby) / 0.4);
+  }
+  /* Alto contraste — aumenta luminância e diferenças de foreground/background */
+  html.alto-contraste {
+    --background: 270 30% 4%;
+    --foreground: 60 100% 98%;
+    --card: 270 40% 10%;
+    --card-foreground: 60 100% 98%;
+    --primary: 270 80% 65%;
+    --primary-foreground: 270 20% 10%;
+    --secondary: 45 95% 60%;
+    --secondary-foreground: 270 20% 10%;
+    --muted: 270 35% 16%;
+    --muted-foreground: 60 100% 90%;
+    --accent: 45 95% 62%;
+    --accent-foreground: 270 20% 10%;
+    --destructive: 0 80% 55%;
+    --destructive-foreground: 60 100% 98%;
+    --border: 270 40% 22%;
+    --input: 270 40% 22%;
+    --ring: 270 85% 65%;
+    --gradient-cosmic: linear-gradient(135deg, hsl(270deg 80% 65%) 0%, hsl(45deg 95% 60%) 100%);
+    --gradient-aurora: linear-gradient(180deg, hsl(270deg 80% 65% / 0.2) 0%, hsl(270deg 80% 65% / 0) 100%);
+    --gradient-orb: radial-gradient(circle at 50% 50%, hsl(270deg 80% 65% / 0.7) 0%, hsl(270deg 80% 65% / 0) 70%);
   }
 }
 
@@ -128,12 +202,34 @@ All colors MUST be HSL.
     box-shadow: var(--glow-violet), var(--glow-gold);
   }
 
+  /* Classes utilitárias para cada raio */
+  .ray-violet { color: hsl(var(--ray-violet)); }
+  .ray-blue { color: hsl(var(--ray-blue)); }
+  .ray-gold { color: hsl(var(--ray-gold)); }
+  .ray-pink { color: hsl(var(--ray-pink)); }
+  .ray-white { color: hsl(var(--ray-white)); }
+  .ray-green { color: hsl(var(--ray-green)); }
+  .ray-ruby { color: hsl(var(--ray-ruby)); }
+
+  /* Backgrounds com cores dos raios */
+  .bg-ray-violet { background-color: hsl(var(--ray-violet)); }
+  .bg-ray-blue { background-color: hsl(var(--ray-blue)); }
+  .bg-ray-gold { background-color: hsl(var(--ray-gold)); }
+  .bg-ray-pink { background-color: hsl(var(--ray-pink)); }
+  .bg-ray-white { background-color: hsl(var(--ray-white)); }
+  .bg-ray-green { background-color: hsl(var(--ray-green)); }
+  .bg-ray-ruby { background-color: hsl(var(--ray-ruby)); }
+
   .gradient-cosmic {
     background: var(--gradient-cosmic);
   }
 
   .gradient-orb {
     background: var(--gradient-orb);
+  }
+
+  .gradient-aurora {
+    background: var(--gradient-aurora);
   }
 
   /* Rune pulse animation */
@@ -194,6 +290,85 @@ All colors MUST be HSL.
     }
   }
 
+  /* Animação shine para título do produto */
+  @keyframes shine {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
+  .animate-shine {
+    animation: shine 3s linear infinite;
+  }
+
+  /* Respeitar prefers-reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-shine {
+      animation: none;
+    }
+  }
+
+  /* Glow melhorado para botão místico */
+  .cosmic-button-glow {
+    box-shadow: var(--glow-violet);
+    transition: box-shadow 0.3s ease;
+  }
+
+  .cosmic-button-glow:hover {
+    box-shadow: var(--glow-violet), var(--glow-gold), 0 0 30px hsl(var(--primary) / 0.5);
+  }
+
+  .cosmic-button-glow:focus-visible {
+    outline: 2px solid hsl(var(--primary));
+    outline-offset: 2px;
+  }
+
+  /* Partículas flutuantes para background */
+  @keyframes particle-float {
+    0%, 100% { 
+      transform: translateY(100vh) translateX(0); 
+      opacity: 0; 
+    }
+    10%, 90% { 
+      opacity: 0.6; 
+    }
+    100% { 
+      transform: translateY(-100vh) translateX(50px); 
+      opacity: 0; 
+    }
+  }
+
+  .auth-container::before,
+  .auth-container::after {
+    content: '';
+    position: absolute;
+    width: 4px;
+    height: 4px;
+    background: hsl(var(--primary));
+    border-radius: 50%;
+    animation: particle-float 8s infinite;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .auth-container::before {
+    left: 20%;
+    animation-delay: 0s;
+  }
+
+  .auth-container::after {
+    left: 80%;
+    animation-delay: 4s;
+  }
+
+  /* Respeitar prefers-reduced-motion */
+  @media (prefers-reduced-motion: reduce) {
+    .auth-container::before,
+    .auth-container::after {
+      animation: none;
+      opacity: 0;
+    }
+  }
+
   .animate-cosmic-pulse {
     animation: cosmic-pulse 3s ease-in-out infinite;
   }
@@ -228,11 +403,21 @@ All colors MUST be HSL.
     animation: fade-in 0.6s ease-out;
   }
 
+  /* Utilitários de atraso de animação para evitar style inline */
+  .animate-delay-1s { animation-delay: 1s; }
+  .animate-delay-1-5s { animation-delay: 1.5s; }
+  .animate-delay-2s { animation-delay: 2s; }
+
   /* Translucent glass effect */
   .glass-cosmic {
     background: hsl(var(--card) / 0.6);
     backdrop-filter: blur(12px);
     border: 1px solid hsl(var(--border) / 0.3);
+  }
+
+  /* Blur util baseado em token variável, permitindo degradação no modo suave */
+  .blur-cosmic {
+    filter: blur(var(--cosmic-blur, 24px));
   }
 
   /* Orb style */
@@ -242,5 +427,76 @@ All colors MUST be HSL.
     @apply glass-cosmic cosmic-glow;
     @apply transition-all duration-500;
     @apply hover:scale-110 hover:-translate-y-2;
+  }
+  /* Reduced motion support via classe */
+  .reduced-motion .animate-cosmic-pulse,
+  .reduced-motion .animate-glow-pulse,
+  .reduced-motion .animate-fade-in,
+  .reduced-motion .animate-rune-pulse,
+  .reduced-motion .animate-rune-shatter,
+  .reduced-motion .animate-rune-reform,
+  .reduced-motion .animate-float {
+    animation: none !important;
+  }
+}
+
+@layer utilities {
+  .scrollbar-mystic {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--ray-violet) / 0.35) transparent;
+  }
+
+  .scrollbar-mystic::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .scrollbar-mystic::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-mystic::-webkit-scrollbar-thumb {
+    background: hsl(var(--ray-violet) / 0.35);
+    border-radius: 9999px;
+  }
+
+  .scrollbar-mystic::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--ray-violet) / 0.5);
+  }
+}
+
+/* Modo suave: degrada animações pesadas e reduz intensidade visual em devices modestos */
+html.modo-suave {
+  --transition-cosmic: all 0.4s ease;
+  --glow-violet: 0 0 24px hsl(270 70% 60% / 0.5);
+  --glow-gold: 0 0 24px hsl(45 90% 60% / 0.4);
+  --cosmic-blur: 10px;
+}
+
+html.modo-suave .glass-cosmic {
+  backdrop-filter: blur(6px);
+}
+
+html.modo-suave .animate-cosmic-pulse {
+  animation-duration: 6s !important;
+}
+
+html.modo-suave .animate-glow-pulse {
+  animation-duration: 8s !important;
+}
+
+html.modo-suave .animate-fade-in {
+  animation-duration: 0.4s !important;
+}
+
+/* Media query para usuários com preferência reduzida */
+@media (prefers-reduced-motion: reduce) {
+  .animate-cosmic-pulse,
+  .animate-glow-pulse,
+  .animate-fade-in,
+  .animate-rune-pulse,
+  .animate-rune-shatter,
+  .animate-rune-reform,
+  .animate-float {
+    animation: none !important;
   }
 }

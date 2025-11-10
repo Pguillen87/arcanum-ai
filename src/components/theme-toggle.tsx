@@ -19,6 +19,12 @@ export const ThemeToggle = () => {
     root.classList.add(newTheme);
     setTheme(newTheme);
     localStorage.setItem("theme", newTheme);
+
+    // Atualiza meta theme-color para coerência com PWA
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+    if (meta) {
+      meta.content = newTheme === 'dark' ? '#8b5cf6' : '#faf5ff';
+    }
   };
 
   return (

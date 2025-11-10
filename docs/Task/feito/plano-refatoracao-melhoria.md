@@ -144,7 +144,7 @@ Este plano aborda:
   - **Arquivo:** `tests/integration/edge_transcribe_audio.spec.ts`
   - **Critério de Aceitação:** 100% de cobertura de casos de uso e edge cases
 
-- [ ] **1.2.4 Testes de `payments/webhooks`**
+- [x] **1.2.4 Testes de `payments/webhooks`**
   - Testar recebimento de webhook válido (Stripe/Mercado Pago)
   - Testar verificação de assinatura
   - Testar idempotência por `event_id`
@@ -159,21 +159,21 @@ Este plano aborda:
 
 ### 1.3 Testes Unitários de Services (1 dia)
 
-- [ ] **1.3.1 Testes de `authService`**
+- [x] **1.3.1 Testes de `authService`**
   - Testar `signInWithEmail`, `signInWithUsername`, `signInWithGoogle`, `signUp`
   - Testar `isUsernameAvailable` (disponível, indisponível, sugestão)
   - Testar tratamento de erros (rede, autenticação falha)
   - **Arquivo:** `tests/unit/services/authService.spec.ts`
   - **Critério de Aceitação:** 90%+ de cobertura de código
 
-- [ ] **1.3.2 Testes de `creditsService`**
+- [x] **1.3.2 Testes de `creditsService`**
   - Testar `debitCredits` (sucesso, saldo insuficiente, idempotência)
   - Testar `creditCredits` (sucesso, idempotência)
   - Testar `getBalance` (sucesso, usuário não encontrado)
   - **Arquivo:** `tests/unit/services/creditsService.spec.ts`
   - **Critério de Aceitação:** 90%+ de cobertura de código
 
-- [ ] **1.3.3 Testes de `openaiAdapter`**
+- [x] **1.3.3 Testes de `openaiAdapter`**
   - Testar chamadas a GPT (texto → transformação)
   - Testar chamadas a Whisper (áudio → transcrição)
   - Testar tratamento de erros (timeout, rate limit, API error)
@@ -221,7 +221,7 @@ Este plano aborda:
   - **Arquivo:** `src/components/brand/BrandVoiceSettings.tsx`
   - **Critério de Aceitação:** UI funcional, salvamento persistente
 
-- [ ] **2.1.4 Testes de Voz da Marca**
+- [x] **2.1.4 Testes de Voz da Marca**
   - Testes unitários de `brandVoiceService`
   - Testes de integração (aplicação em transformações)
   - Testes E2E (configurar → transformar → verificar resultado)
@@ -268,7 +268,7 @@ Este plano aborda:
   - **Arquivo:** `src/components/notifications/NotificationList.tsx`
   - **Critério de Aceitação:** UI funcional, atualização em tempo real
 
-- [ ] **2.2.6 Testes de Notificações**
+- [x] **2.2.6 Testes de Notificações**
   - Testes de RLS (owner-only)
   - Testes de serviço
   - Testes de Realtime (assinatura, recebimento)
@@ -301,7 +301,7 @@ Este plano aborda:
   - **Arquivo:** `src/components/export/ExportButton.tsx`
   - **Critério de Aceitação:** UI funcional, downloads funcionando
 
-- [ ] **2.3.4 Testes de Exportação**
+- [x] **2.3.4 Testes de Exportação**
   - Testes unitários de `exportService`
   - Testes de integração (exportar → verificar arquivo)
   - **Arquivo:** `tests/integration/export.spec.ts`

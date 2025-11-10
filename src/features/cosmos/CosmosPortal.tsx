@@ -4,14 +4,37 @@ import { CosmicButton } from "@/components/cosmic/CosmicButton";
 import { Stars, Lightbulb, CreditCard, FolderOpen, BarChart3 } from "lucide-react";
 import { RuneIcon } from "@/components/cosmic/RuneIcon";
 import { Badge } from "@/components/ui/badge";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 interface CosmosPortalProps {
   onClose: () => void;
+  onNavigateToOrb?: (orbId: string) => void;
 }
 
-export const CosmosPortal = ({ onClose }: CosmosPortalProps) => {
+export const CosmosPortal = ({ onClose, onNavigateToOrb }: CosmosPortalProps) => {
   return (
-    <PortalContainer title="Cosmos - Visão Universal" onClose={onClose}>
+    <ErrorBoundary
+      fallback={
+        <PortalContainer 
+          title="Cosmos - Visão Universal" 
+          onClose={onClose}
+          currentOrbId="cosmos"
+          onNavigateToOrb={onNavigateToOrb}
+        >
+          <div className="p-6 text-center">
+            <p className="text-muted-foreground">
+              Erro ao carregar portal de cosmos. Por favor, tente novamente.
+            </p>
+          </div>
+        </PortalContainer>
+      }
+    >
+      <PortalContainer 
+        title="Cosmos - Visão Universal" 
+        onClose={onClose}
+        currentOrbId="cosmos"
+        onNavigateToOrb={onNavigateToOrb}
+      >
       <div className="grid gap-6 md:gap-8">
         {/* Inspiration of the Day */}
         <CosmicCard glow>
@@ -145,5 +168,6 @@ export const CosmosPortal = ({ onClose }: CosmosPortalProps) => {
         </CosmicCard>
       </div>
     </PortalContainer>
+    </ErrorBoundary>
   );
 };

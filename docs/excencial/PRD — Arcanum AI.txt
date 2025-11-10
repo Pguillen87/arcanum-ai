@@ -1,0 +1,177 @@
+# PRD — Arcanum.AI (v3)
+
+Atualização: 2025-11-10  
+Responsável: Equipe Arcanum.AI
+
+## 1) Resumo Executivo
+O Arcanum.AI é uma plataforma SaaS de transmutação criativa multimodal (texto, áudio, vídeo) com estética mística e foco em “Voz/Personagem” do criador. A experiência une tecnologia e linguagem arquetípica em uma UI mística, enquanto o backend orquestra jobs de transcrição (Whisper) e transformação (GPT) via Supabase Edge Functions, armazenando ativos e resultados com RLS owner‑only.  
+Diferenciais: motor de prompt centralizado (Personagem/Voz) garantindo consistência entre canais; sistema de créditos justo (paga apenas por entregas concluídas).  
+Stack: Vite + React + TypeScript + Tailwind + PWA; Supabase (Auth, DB, Storage, Edge Functions); OpenAI (Whisper/GPT).
+
+## 2) Objetivos e Resultados Esperados
+- Primário: acelerar e padronizar a criação de conteúdo (posts, resumos, newsletters, roteiros) com a “essência” do criador.  
+- Secundários: estética e UX imersiva; custos controlados por créditos; métricas e rastreabilidade.  
+- Resultados: produtividade ≥ 50%; consistência de identidade ≥ 70%; satisfação média ≥ 70%.
+
+## 3) Público‑Alvo e Personas
+- Criadores individuais, social media/freelancers, professores/terapeutas, empreendedores criativos.  
+- Personas:  
+  - Iniciado (freemium, valida estilo/voz).  
+  - Criador Alquímico (creditado, usa módulos avançados).  
+  - Mentor Educativo (clareza narrativa e newsletters).
+
+## 4) Princípios de UX e Linguagem
+- Tema místico moderno (violeta/dourado), microinterações poéticas (portais, runas, partículas).  
+- Linguagem arquetípica sem perder clareza (ex.: “Abrir Portal” = login).  
+- Acessibilidade: alto contraste, foco visível, aria‑labels, mensagens amigáveis.
+
+## 5) Escopo Funcional por Módulos
+### 5.1 Upload & Ingestão
+- Upload de texto/áudio/vídeo; metadados de asset (mimetype, tamanho, duração).  
+- Validações de formato/tamanho; progresso/cancelamento; erro amigável.
+
+### 5.2 Transcrição (Áudio/Vídeo)
+- Jobs com estados queued → processing → completed/failed.  
+- Whisper (OpenAI) para transcrição; polling com overlay místico; editor com export (md/txt/srt).
+
+### 5.3 Transformação de Texto
+- Motor de prompt centralizado (Personagem/Voz) com tipos: post, resumo, newsletter, roteiro.  
+- Parâmetros: tone/length/preferences; preview com “Refresh” (nova variante); export.
+
+### 5.4 Vídeo Curto (Futuro)
+- Ingestão/YouTube; detecção de cortes; legendas dinâmicas; preview e export.
+
+### 5.5 Voz da Marca/Personagem
+- Cadastro/treino leve (preferências e exemplos); aplicação nos jobs; histórico de uso.
+
+### 5.6 Créditos e Assinaturas
+- Saldo, ledger de consumo; cobrança pós‑entrega; planos mensais; notificações.
+
+### 5.7 Notificações
+- job_completed/job_failed/credits_debited; feed básico na UI.
+
+## 6) Fluxos Principais (Representação Textual)
+### 6.1 Áudio → Transcrição → Personagem
+Upload → criar asset → transcribe_audio → whisper_processor → transcriptions.completed + text → editor UI → aplicar Personagem (transform_text) → export.
+
+### 6.2 Texto → Transformação
+Input → build prompt centralizado → apply BrandVoice/Character → GPT → outputs/variants → export → debitar créditos.
+
+### 6.3 Vídeo → Clipes Curtos (Futuro)
+Upload/YouTube → análise → cortes → legendas → preview → export → debitar créditos.
+
+## 7) Arquitetura Técnica
+- Frontend: Vite + React + TS + Tailwind + PWA; hooks e services isolados; observabilidade por eventos com traceId.  
+- Edge Functions (Supabase):  
+  - transcribe_audio: valida sessão, cria job/transcription, aciona whisper_processor.  
+  - whisper_processor: baixa asset, chama Whisper, grava text/status, cria histórico; valida mimetype e retorna erros amigáveis.  
+  - transform_text: aplica motor de prompt centralizado; salva outputs/metrics; notifica; debita créditos.  
+- Supabase: Auth (JWT); PostgREST (RLS owner‑only); Storage (buckets audio/text/video).  
+- IA: OpenAI Whisper + GPT; extensível (Coqui/HF futura).
+
+## 8) Motor de Prompt Centralizado (Personagem/Voz)
+- Objetivo: garantir coerência e qualidade entre texto, áudio e vídeo.  
+- Componentes:  
+  - buildTransformPrompt(type, tone, length, inputText).  
+  - buildBrandVoiceFromCharacter(character) → preferences (formality/creativity/length) e personalityInstructions.  
+  - applyBrandVoice(prompt, brandVoice).  
+- Uso atual: transform_text integrado; “brand_voice_transform” deve ser migrado/unificado ao motor.
+
+## 9) Modelo de Dados (Resumo)
+- profiles: user_id, brand_voice, preferences.  
+- projects: id, user_id, nome, descrição.  
+- assets: id, project_id, user_id, storage_path, type (audio/text/video), size_bytes, duration_seconds, mimetype, status.  
+- transcriptions: id, asset_id, user_id, language, status, text, error, created_at, updated_at.  
+- transformations: id, project_id, user_id, source_asset_id?, type, params (tone/length/brandVoice/characterId), outputs, status, cost_credits.  
+- credits: user_id, saldo; credit_transactions: user_id, delta, reason, ref_type, ref_id.  
+- notifications: user_id, type, payload, read_at.
+
+## 10) APIs e Contratos
+### 10.1 Edge Functions
+- POST /functions/v1/transcribe_audio  
+  body { assetId, language, applyTransformation?, characterId?, transformationType?, transformationLength? } → { transcriptionId, jobId?, status, text?, language? }.
+- POST /functions/v1/whisper_processor  
+  body { transcriptionId | jobId } + headers { Authorization: Bearer anon, x-edge-token } → { transcriptionId, status, text? }.
+- POST /functions/v1/transform_text  
+  body { projectId, type, inputText?, sourceAssetId?, tone?, length?, characterId?, brandVoice? } → { jobId, status, output: { text, variants[] } }.
+
+### 10.2 REST (PostgREST) sob RLS
+- GET /rest/v1/assets?project_id=eq.<id> (owner‑only).  
+- GET /rest/v1/transcriptions?id=eq.<uuid> (owner‑only).  
+- GET/POST transformations, notifications, credits (owner‑only).
+
+### 10.3 Autorização
+- Client: Authorization: Bearer <access_token> para funções que exigem usuário.  
+- Worker: Authorization: Bearer <anon> + x-edge-token (WORKER_TOKEN).
+
+## 11) Segurança e Privacidade
+- RLS owner‑only por user_id para todas as tabelas sensíveis.  
+- Sanitização de inputs (DOMPurify) e logs com scrub de PII (tokens/UUIDs).  
+- CORS/CSP consistentes; erro 422 amigável em formatos não suportados.  
+- LGPD/GDPR: retenção mínima; exportação/exclusão de conta (futuro).
+
+## 12) Observabilidade e Métricas
+- Eventos: audio_transcription_attempt/success/failure; status_update; success_rate e latência (queued→completed).  
+- Tracing por traceId correlacionando cliente e worker.  
+- Logs estruturados (Edge Functions) e dashboards básicos.
+
+## 13) PWA/Offline
+- Manifest/ícones; fallback offline seguro sem PII.  
+- Cache estático com rotas neutras; sem cache de dados sensíveis.
+
+## 14) Testes e Qualidade
+- Unidade: hooks/services (validações, FSM de job status), promptEngine (construção de prompt).  
+- Integração: Edge Functions com MSW; PostgREST sob RLS; UI e2e com Playwright (upload, polling, cards, export).  
+- Carga: transcrição com arquivos médios; transformação com prompts longos.  
+- Segurança: CSP/headers; sanitização; tokens em storage.
+
+## 15) Roadmap (Fases)
+- Fase 1: Autenticação + Dashboard + Transformação de Texto + Prompt Engine central.  
+- Fase 2: Áudio/Transcrição + Editor + Export + Créditos básicos.  
+- Fase 3: Vídeo curto (detecção, legendas, preview) + Pagamentos.  
+- Fase 4: Teleprompter Inteligente + OBS Integration.  
+- Fase 5: Agentes criativos + Clonagem de voz + Dracmas.
+
+## 16) SLOs e KPIs
+- SLOs:  
+  - Transformação de texto < 15s (média).  
+  - Transcrição (áudio curto) < 60–120s (média).  
+  - Disponibilidade > 99%.  
+- KPIs:  
+  - Conversão freemium→assinatura ≥ 12%.  
+  - Churn mensal < 6%.  
+  - Satisfação ≥ 70%.  
+  - Custo IA por request ≤ 20% da receita unitária.
+
+## 17) Critérios de Aceitação por Módulo
+- Upload: formato/tamanho ok; progresso; erro amigável; asset.status=ready.  
+- Transcrição: job completed grava text; UI exibe “Texto Original”; export md/txt/srt; histórico criado.  
+- Transformação: aplica Personagem/Voz; Refresh gera variante; outputs coerentes; debitagem após entrega.  
+- Notificações: job_completed/job_failed/credits_debited visíveis.  
+- Observabilidade: eventos/latências; traceId visível para correlação.
+
+## 18) Não‑Objetivos (Ciclo Atual)
+- SSR/SEO completo (avaliar futuramente).  
+- Clonagem de voz avançada (planejada para fases futuras).  
+- Streaming/transcrição em tempo real via WebRTC (futuro).
+
+## 19) Anexos e Mapeamento ao Código
+- Frontend:  
+  - AudioTranscribeTab: upload (assetsService), handleTranscribe (transcribe_audio), polling (useTranscriptionStatus), cards.  
+  - Services: transcriptionService, transformService; characterService deve usar transform_text/promptEngine.  
+- Edge:  
+  - whisper_processor: valida mimetype, chama Whisper, grava text/status/histórico.  
+  - transform_text: usa promptEngine; outputs/metrics/debitagem.  
+  - transcribe_audio: cria job e aciona worker; body com opções de transformação.  
+- Supabase: Tabelas e RLS correspondentes; Storage com buckets.  
+- Observabilidade: eventos e métricas por traceId em cliente e worker.
+
+---
+
+### Implementação e Testabilidade (Guia)
+1) Dividir por módulos (incremental): upload/ingestão; transcrição; transformação; vídeo curto; voz/personagem; créditos; notificações; PWA.  
+2) Estratégias de teste: unit (hooks/services); integração (Edge/PostgREST); e2e (upload→polling→cards→export).  
+3) Isolamento por camadas: services/adapters (Supabase client), hooks com interfaces e injeção, configuração via import.meta.env, i18n/glossário místico.  
+4) Casos de exceção: formatos não suportados; rede interrompida; token expirado; sanitização; webhook duplicado; offline parcial; devices modestos.  
+5) Partes prioritárias para testes: FSM de job; promptEngine; sanitização; service worker; ledger de créditos; acessibilidade em dialogs/overlays.
+

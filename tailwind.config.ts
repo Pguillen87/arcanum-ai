@@ -57,6 +57,29 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        // Cores místicas do Arcanum.AI
+        mystical: {
+          gold: {
+            DEFAULT: "#FFD700",
+            light: "#FFA500",
+            dark: "#FF8C00",
+          },
+          lilac: {
+            DEFAULT: "#9D4EDD",
+            light: "#C77DFF",
+            dark: "#7B2CBF",
+          },
+          cosmic: {
+            DEFAULT: "#4A90E2",
+            light: "#6BB6FF",
+            dark: "#2E5C8A",
+          },
+          deep: {
+            DEFAULT: "#0A0A0A",
+            light: "#1A1A1A",
+            dark: "#000000",
+          },
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -106,6 +129,55 @@ export default {
             transform: "translateY(-20px)",
           },
         },
+        "rune-glow": {
+          "0%, 100%": {
+            opacity: "0.6",
+            filter: "drop-shadow(0 0 8px rgba(255, 215, 0, 0.5))",
+          },
+          "50%": {
+            opacity: "1",
+            filter: "drop-shadow(0 0 16px rgba(255, 215, 0, 0.8))",
+          },
+        },
+        "particle-float": {
+          "0%": {
+            transform: "translateY(0) translateX(0) rotate(0deg)",
+            opacity: "0",
+          },
+          "10%": {
+            opacity: "1",
+          },
+          "90%": {
+            opacity: "1",
+          },
+          "100%": {
+            transform: "translateY(-100vh) translateX(50px) rotate(360deg)",
+            opacity: "0",
+          },
+        },
+        "portal-open": {
+          "0%": {
+            transform: "scale(0.8)",
+            opacity: "0",
+          },
+          "50%": {
+            transform: "scale(1.05)",
+          },
+          "100%": {
+            transform: "scale(1)",
+            opacity: "1",
+          },
+        },
+        "crystal-pulse": {
+          "0%, 100%": {
+            transform: "scale(1)",
+            filter: "brightness(1)",
+          },
+          "50%": {
+            transform: "scale(1.1)",
+            filter: "brightness(1.3)",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
@@ -113,6 +185,16 @@ export default {
         "cosmic-pulse": "cosmic-pulse 3s ease-in-out infinite",
         "glow-pulse": "glow-pulse 4s ease-in-out infinite",
         "float": "float 6s ease-in-out infinite",
+        "rune-glow": "rune-glow 2s ease-in-out infinite",
+        "particle-float": "particle-float 8s linear infinite",
+        "portal-open": "portal-open 0.5s cubic-bezier(0.4, 0, 0.2, 1)",
+        "crystal-pulse": "crystal-pulse 2s ease-in-out infinite",
+      },
+      boxShadow: {
+        "mystical-gold": "0 0 20px rgba(255, 215, 0, 0.5), 0 0 40px rgba(255, 165, 0, 0.3)",
+        "mystical-lilac": "0 0 20px rgba(157, 78, 221, 0.5), 0 0 40px rgba(199, 125, 255, 0.3)",
+        "mystical-cosmic": "0 0 20px rgba(74, 144, 226, 0.5), 0 0 40px rgba(107, 182, 255, 0.3)",
+        "mystical-glow": "0 0 30px rgba(255, 215, 0, 0.6), inset 0 0 20px rgba(157, 78, 221, 0.3)",
       },
     },
   },

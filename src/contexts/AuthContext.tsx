@@ -46,16 +46,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
+    let mounted = true;
+    let timeoutId: NodeJS.Timeout;
+
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        if (!mounted) return;
         setSession(session);
         setUser(session?.user ?? null);
         
         // Load profile when session changes
         if (session?.user) {
           setTimeout(() => {
-            loadProfile(session.user.id);
+            if (mounted) {
+              loadProfile(session.user.id);
+            }
           }, 0);
         } else {
           setProfile(null);
@@ -63,8 +69,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    // THEN check for existing session with timeout
+    const sessionPromise = supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (!mounted) return;
+      
+      if (error) {
+        console.error("[AuthContext] Erro ao obter sessão:", error);
+        setLoading(false);
+        return;
+      }
+      
       setSession(session);
       setUser(session?.user ?? null);
       
@@ -72,9 +86,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         loadProfile(session.user.id);
       }
       setLoading(false);
+    }).catch((error) => {
+      if (!mounted) return;
+      console.error("[AuthContext] Erro crítico ao inicializar:", error);
+      setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    // Timeout de segurança: se após 5 segundos não resolver, definir loading como false
+    timeoutId = setTimeout(() => {
+      if (mounted) {
+        console.warn("[AuthContext] Timeout ao obter sessão - continuando sem autenticação");
+        setLoading(false);
+      }
+    }, 5000);
+
+    // Limpar timeout quando promise resolver
+    sessionPromise.finally(() => {
+      if (timeoutId) clearTimeout(timeoutId);
+    });
+
+    return () => {
+      mounted = false;
+      if (timeoutId) clearTimeout(timeoutId);
+      subscription.unsubscribe();
+    };
   }, []);
 
   const signInWithEmail = async (email: string, password: string, persistSession: boolean = true) => {

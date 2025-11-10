@@ -1,0 +1,33 @@
+{
+  "extends": ["stylelint-config-standard"],
+  "ignoreFiles": [
+    "dist/**",
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.js",
+    "**/*.jsx"
+  ],
+  "rules": {
+    "at-rule-no-unknown": [true, { "ignoreAtRules": ["tailwind", "layer"] }],
+    "alpha-value-notation": "number",
+    "hue-degree-notation": "number",
+    "rule-empty-line-before": null,
+    "custom-property-empty-line-before": null,
+    "declaration-empty-line-before": null,
+    "comment-empty-line-before": null,
+    "declaration-property-value-disallowed-list": {
+      "/^color$/": [
+        "/#([0-9a-fA-F]{3,8})\\b/",
+        "/rgb\\s*\\(/"
+      ],
+      "/^background$/": [
+        "/#([0-9a-fA-F]{3,8})\\b/",
+        "/rgb\\s*\\(/"
+      ],
+      "/^border/": [
+        "/#([0-9a-fA-F]{3,8})\\b/",
+        "/rgb\\s*\\(/"
+      ]
+    }
+  }
+}

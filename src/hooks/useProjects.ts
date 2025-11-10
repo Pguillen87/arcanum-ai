@@ -10,10 +10,20 @@ export function useProjects() {
   const { data: projects, isLoading, error } = useQuery({
     queryKey: ['projects'],
     queryFn: async () => {
-      const { data, error } = await projectsService.listProjects();
-      if (error) throw error;
-      return data || [];
+      try {
+        const { data, error } = await projectsService.listProjects();
+        if (error) {
+          console.error('[useProjects] Erro ao listar projetos:', error);
+          return []; // Retornar array vazio em vez de lançar erro
+        }
+        return data || [];
+      } catch (err) {
+        console.error('[useProjects] Erro inesperado:', err);
+        return []; // Fallback seguro
+      }
     },
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 
   const createProject = useMutation({
@@ -93,7 +103,7 @@ export function useProjects() {
     projects: projects || [],
     isLoading,
     error,
-    createProject: createProject.mutate,
+    createProject: createProject.mutateAsync,
     updateProject: updateProject.mutate,
     deleteProject: deleteProject.mutate,
     isCreating: createProject.isPending,
@@ -107,11 +117,21 @@ export function useProject(id: string | null) {
     queryKey: ['project', id],
     queryFn: async () => {
       if (!id) return null;
-      const { data, error } = await projectsService.getProject(id);
-      if (error) throw error;
-      return data;
+      try {
+        const { data, error } = await projectsService.getProject(id);
+        if (error) {
+          console.error('[useProject] Erro ao obter projeto:', error);
+          return null;
+        }
+        return data;
+      } catch (err) {
+        console.error('[useProject] Erro inesperado:', err);
+        return null;
+      }
     },
     enabled: !!id,
+    retry: false,
+    refetchOnWindowFocus: false,
   });
 
   return {

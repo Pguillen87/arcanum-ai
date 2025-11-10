@@ -37,14 +37,12 @@ const Profile = () => {
     <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Cosmic background effects */}
       <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0" style={{ background: "var(--gradient-aurora)" }} />
+        <div className="absolute inset-0 gradient-aurora" />
         <div
-          className="absolute top-20 left-20 w-96 h-96 rounded-full blur-3xl opacity-30 animate-cosmic-pulse"
-          style={{ background: "var(--gradient-orb)" }}
+          className="absolute top-20 left-20 w-96 h-96 rounded-full blur-3xl opacity-30 animate-cosmic-pulse gradient-orb"
         />
         <div
-          className="absolute bottom-20 right-20 w-96 h-96 rounded-full blur-3xl opacity-30 animate-cosmic-pulse"
-          style={{ background: "var(--gradient-orb)", animationDelay: "1.5s" }}
+          className="absolute bottom-20 right-20 w-96 h-96 rounded-full blur-3xl opacity-30 animate-cosmic-pulse animate-delay-1-5s gradient-orb"
         />
       </div>
 
@@ -58,7 +56,7 @@ const Profile = () => {
           Voltar
         </CosmicButton>
 
-        <CosmicCard title="Meu Perfil" description="Gerencie suas informações pessoais" glow>
+        <CosmicCard title="Essência Pessoal" description="Harmonize sua essência" glow>
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="flex justify-center">
               <Avatar className="w-24 h-24">

@@ -4,14 +4,17 @@ import { cn } from "@/lib/utils";
 import { ReactNode } from "react";
 
 interface CosmicCardProps {
-  title?: string;
-  description?: string;
+  title?: ReactNode;
+  description?: ReactNode;
   children: ReactNode;
   className?: string;
   glow?: boolean;
 }
 
 export const CosmicCard = ({ title, description, children, className, glow = true }: CosmicCardProps) => {
+  // Verificar se children é válido (não null, undefined ou string vazia)
+  const hasValidChildren = children !== null && children !== undefined && children !== '';
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -26,7 +29,7 @@ export const CosmicCard = ({ title, description, children, className, glow = tru
             {description && <CardDescription>{description}</CardDescription>}
           </CardHeader>
         )}
-        <CardContent>{children}</CardContent>
+        {hasValidChildren && <CardContent>{children}</CardContent>}
       </Card>
     </motion.div>
   );

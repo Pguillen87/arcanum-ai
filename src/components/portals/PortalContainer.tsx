@@ -1,14 +1,25 @@
 import { motion, useMotionValue, useTransform, PanInfo } from "framer-motion";
-import { X } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { MysticalBackButton } from "@/components/cosmic/MysticalBackButton";
+import { RotatingQuote } from "./RotatingQuote";
+import { PortalOrbNavigation } from "./PortalOrbNavigation";
+import { PortalTitle } from "./PortalTitle";
 
 interface PortalContainerProps {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  currentOrbId?: string;
+  onNavigateToOrb?: (orbId: string) => void;
 }
 
-export const PortalContainer = ({ title, onClose, children }: PortalContainerProps) => {
+export const PortalContainer = ({ 
+  title, 
+  onClose, 
+  children,
+  currentOrbId,
+  onNavigateToOrb,
+}: PortalContainerProps) => {
   const y = useMotionValue(0);
   const opacity = useTransform(y, [0, 150], [1, 0.5]);
 
@@ -35,37 +46,68 @@ export const PortalContainer = ({ title, onClose, children }: PortalContainerPro
 
       {/* Header */}
       <motion.div
-        className="glass-cosmic p-4 md:p-6 flex items-center justify-between mb-4"
+        className="glass-cosmic p-4 md:p-6 mb-4"
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
       >
-        <h1 className="text-2xl md:text-4xl font-bold bg-gradient-cosmic bg-clip-text text-transparent">
-          {title}
-        </h1>
-        
-        {/* Close Button */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              onClick={onClose}
-              className="group relative"
-            >
-              <div className="relative">
-                {/* Glow effect */}
-                <div className="absolute inset-0 rounded-full opacity-0 group-hover:opacity-40 blur-xl transition-all duration-300" style={{ background: "var(--gradient-cosmic)" }} />
-                
-                {/* Main circle */}
-                <div className="relative w-10 h-10 md:w-12 md:h-12 rounded-full border border-white/20 backdrop-blur-xl bg-black/30 flex items-center justify-center group-hover:scale-110 group-hover:rotate-90 group-hover:border-white/40 transition-all duration-300 group-hover:shadow-lg">
-                  <X className="w-5 h-5 md:w-6 md:h-6 text-white group-hover:text-purple-300 transition-colors" />
-                </div>
-              </div>
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>
-            <p>Fechar</p>
-          </TooltipContent>
-        </Tooltip>
+        {/* Primeira linha: Botão voltar + Título + Navegação de esferas */}
+        <div className="flex items-center justify-between gap-4 mb-3 md:mb-4">
+          {/* Esquerda: Botão voltar + Título */}
+          <div className="flex items-center gap-3 md:gap-4 flex-1 min-w-0">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <MysticalBackButton
+                  onClick={onClose}
+                  size="md"
+                  variant="portal"
+                  ariaLabel="Voltar ao Portal Principal"
+                />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Voltar ao Portal Principal</p>
+              </TooltipContent>
+            </Tooltip>
+            
+            <PortalTitle 
+              title={title} 
+              orbId={currentOrbId}
+              className="flex-1 min-w-0"
+            />
+          </div>
+          
+          {/* Direita: Navegação rápida de esferas */}
+          {currentOrbId && onNavigateToOrb && (
+            <div className="hidden md:flex items-center">
+              <PortalOrbNavigation
+                currentOrbId={currentOrbId}
+                onSelectOrb={onNavigateToOrb}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Segunda linha: Frase rotativa (mobile: abaixo, desktop: ao lado do título) */}
+        {currentOrbId && (
+          <div className="md:hidden mb-2">
+            <RotatingQuote orbId={currentOrbId as 'essencia' | 'energia' | 'protecao' | 'cosmos'} />
+          </div>
+        )}
+        {currentOrbId && (
+          <div className="hidden md:block">
+            <RotatingQuote orbId={currentOrbId as 'essencia' | 'energia' | 'protecao' | 'cosmos'} />
+          </div>
+        )}
+
+        {/* Navegação de esferas no mobile (abaixo da frase) */}
+        {currentOrbId && onNavigateToOrb && (
+          <div className="md:hidden flex justify-center mt-3">
+            <PortalOrbNavigation
+              currentOrbId={currentOrbId}
+              onSelectOrb={onNavigateToOrb}
+            />
+          </div>
+        )}
       </motion.div>
 
       {/* Content */}

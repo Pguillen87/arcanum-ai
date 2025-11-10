@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { PortalContainer } from "@/components/portals/PortalContainer";
 import { CosmicCard } from "@/components/cosmic/CosmicCard";
 import { CosmicButton } from "@/components/cosmic/CosmicButton";
-import { Shield, AlertTriangle, Settings, CheckCircle } from "lucide-react";
+import { Shield, AlertTriangle, Settings, CheckCircle, Video, Monitor } from "lucide-react";
 import { RuneIcon } from "@/components/cosmic/RuneIcon";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
@@ -10,23 +10,30 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ProtectionSettings } from "@/types/auth";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { TeleprompterView } from "@/components/teleprompter/TeleprompterView";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface ProtecaoPortalProps {
   onClose: () => void;
+  onNavigateToOrb?: (orbId: string) => void;
 }
 
-export const ProtecaoPortal = ({ onClose }: ProtecaoPortalProps) => {
+export const ProtecaoPortal = ({ onClose, onNavigateToOrb }: ProtecaoPortalProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [autoModeration, setAutoModeration] = useState(true);
   const [offensiveFilter, setOffensiveFilter] = useState(true);
   const [brandVerification, setBrandVerification] = useState(true);
+  const [activeTab, setActiveTab] = useState<'teleprompter' | 'protection'>('teleprompter');
 
   // Load user's protection settings
   useEffect(() => {
     if (user) {
       loadSettings();
+    } else {
+      setLoading(false);
     }
   }, [user]);
 
@@ -40,12 +47,12 @@ export const ProtecaoPortal = ({ onClose }: ProtecaoPortalProps) => {
         .eq('user_id', user.id)
         .single();
 
-      if (error) throw error;
+      if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows returned
 
       if (data) {
-        setAutoModeration(data.auto_moderation);
-        setOffensiveFilter(data.offensive_filter);
-        setBrandVerification(data.brand_verification);
+        setAutoModeration(data.auto_moderation ?? true);
+        setOffensiveFilter(data.offensive_filter ?? true);
+        setBrandVerification(data.brand_verification ?? true);
       }
     } catch (error) {
       console.error('Error loading settings:', error);
@@ -94,8 +101,48 @@ export const ProtecaoPortal = ({ onClose }: ProtecaoPortalProps) => {
   };
 
   return (
-    <PortalContainer title="Proteção - Escudo Dimensional" onClose={onClose}>
-      <div className="grid gap-6 md:gap-8">
+    <ErrorBoundary
+      fallback={
+        <PortalContainer 
+          title="Proteção - Escudo Dimensional" 
+          onClose={onClose}
+          currentOrbId="protecao"
+          onNavigateToOrb={onNavigateToOrb}
+        >
+          <div className="p-6 text-center">
+            <p className="text-muted-foreground">
+              Erro ao carregar portal de proteção. Por favor, tente novamente.
+            </p>
+          </div>
+        </PortalContainer>
+      }
+    >
+      <PortalContainer 
+        title="Proteção - Escudo Dimensional" 
+        onClose={onClose}
+        currentOrbId="protecao"
+        onNavigateToOrb={onNavigateToOrb}
+      >
+      <Tabs value={activeTab} onValueChange={(val) => setActiveTab(val as 'teleprompter' | 'protection')} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 mb-6">
+          <TabsTrigger value="teleprompter" className="flex items-center gap-2">
+            <Video className="w-4 h-4" />
+            Teleprompter
+          </TabsTrigger>
+          <TabsTrigger value="protection" className="flex items-center gap-2">
+            <Shield className="w-4 h-4" />
+            Proteção
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="teleprompter" className="mt-0">
+          <div className="h-[calc(100vh-200px)]">
+            <TeleprompterView />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="protection" className="mt-0">
+          <div className="grid gap-6 md:gap-8">
         {/* Moderation Dashboard */}
         <CosmicCard
           title="Dashboard de Moderação"
@@ -233,7 +280,10 @@ export const ProtecaoPortal = ({ onClose }: ProtecaoPortalProps) => {
             </div>
           </div>
         </CosmicCard>
-      </div>
+          </div>
+        </TabsContent>
+      </Tabs>
     </PortalContainer>
+    </ErrorBoundary>
   );
 };

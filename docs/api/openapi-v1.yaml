@@ -1,0 +1,383 @@
+openapi: 3.0.3
+info:
+  title: Arcanum AI API
+  version: 1.0.0
+  description: API para transformação de conteúdo (texto, áudio, vídeo)
+  contact:
+    name: Arcanum AI Support
+    email: support@arcanum.ai
+
+servers:
+  - url: https://giozhrukzcqoopssegby.supabase.co/functions/v1
+    description: Production
+
+paths:
+  /transform_text:
+    post:
+      summary: Transformar texto
+      description: Transforma texto em diferentes formatos (post, resumo, newsletter, roteiro)
+      operationId: transformText
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - projectId
+                - type
+              properties:
+                projectId:
+                  type: string
+                  format: uuid
+                  description: ID do projeto
+                type:
+                  type: string
+                  enum: [post, resumo, newsletter, roteiro]
+                  description: Tipo de transformação
+                inputText:
+                  type: string
+                  description: Texto de entrada (ou sourceAssetId)
+                sourceAssetId:
+                  type: string
+                  format: uuid
+                  description: ID do asset de origem (ou inputText)
+                tone:
+                  type: string
+                  description: Tom desejado (ex: formal, casual, técnico)
+                length:
+                  type: string
+                  enum: [short, long]
+                  description: Tamanho do conteúdo
+                idempotencyKey:
+                  type: string
+                  description: Chave de idempotência
+                brandVoice:
+                  type: object
+                  description: Configurações de voz da marca
+      responses:
+        '200':
+          description: Transformação concluída
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [completed]
+                  output:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                      variants:
+                        type: array
+                        items:
+                          type: string
+        '400':
+          description: Erro de validação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /transcribe_audio:
+    post:
+      summary: Transcrever áudio/vídeo
+      description: Transcreve arquivo de áudio ou vídeo usando Whisper
+      operationId: transcribeAudio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - assetId
+              properties:
+                assetId:
+                  type: string
+                  format: uuid
+                  description: ID do asset (audio ou video)
+                language:
+                  type: string
+                  default: pt
+                  description: Idioma do áudio
+                idempotencyKey:
+                  type: string
+                  description: Chave de idempotência
+      responses:
+        '200':
+          description: Transcrição concluída
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [completed]
+                  text:
+                    type: string
+        '400':
+          description: Erro de validação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /video_short:
+    post:
+      summary: Gerar vídeo curto
+      description: Gera vídeo curto com cortes e legendas (mock inicial)
+      operationId: createVideoShort
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - projectId
+                - sourceAssetId
+              properties:
+                projectId:
+                  type: string
+                  format: uuid
+                  description: ID do projeto
+                sourceAssetId:
+                  type: string
+                  format: uuid
+                  description: ID do asset de vídeo
+                cuts:
+                  type: boolean
+                  default: false
+                  description: Aplicar cortes automáticos
+                subtitles:
+                  type: boolean
+                  default: false
+                  description: Gerar legendas
+                style:
+                  type: string
+                  default: default
+                  description: Estilo do vídeo
+                idempotencyKey:
+                  type: string
+                  description: Chave de idempotência
+      responses:
+        '200':
+          description: Vídeo gerado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobId:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [completed]
+                  outputs:
+                    type: object
+                    properties:
+                      video_url:
+                        type: string
+                        format: uri
+                      preview_url:
+                        type: string
+                        format: uri
+                      duration:
+                        type: number
+                      cuts:
+                        type: array
+                        items:
+                          type: object
+                      subtitles:
+                        type: object
+        '400':
+          description: Erro de validação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /payments/webhooks:
+    post:
+      summary: Webhook de pagamentos
+      description: Recebe eventos de pagamento de provedores (Stripe/Mercado Pago)
+      operationId: paymentWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - event_id
+                - provider
+                - status
+              properties:
+                event_id:
+                  type: string
+                  description: ID único do evento
+                provider:
+                  type: string
+                  enum: [stripe, mp]
+                  description: Provedor de pagamento
+                status:
+                  type: string
+                  enum: [pending, approved, rejected, refunded]
+                  description: Status do pagamento
+                amount_cents:
+                  type: number
+                  description: Valor em centavos
+                currency:
+                  type: string
+                  default: BRL
+                  description: Moeda
+                user_id:
+                  type: string
+                  format: uuid
+                  description: ID do usuário
+                metadata:
+                  type: object
+                  description: Metadados adicionais
+      responses:
+        '200':
+          description: Webhook processado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  message:
+                    type: string
+                  credits:
+                    type: number
+        '400':
+          description: Erro de validação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Erro interno
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /username-login:
+    post:
+      summary: Login com username
+      description: Autenticação usando username em vez de email
+      operationId: usernameLogin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  description: Nome de usuário
+                password:
+                  type: string
+                  format: password
+                  description: Senha
+      responses:
+        '200':
+          description: Login bem-sucedido
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session:
+                    type: object
+                  user:
+                    type: object
+        '400':
+          description: Erro de validação
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Credenciais inválidas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Usuário não encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Rate limit excedido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          description: Código de erro
+        message:
+          type: string
+          description: Mensagem de erro
+        error:
+          type: string
+          description: Detalhes do erro (opcional)
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - BearerAuth: []
+

@@ -1,0 +1,864 @@
+// src/components/transcription/AudioTranscribeTab.tsx
+// Componente para upload e transcrição de áudio com integração de characters
+
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranscription, useTranscriptionStatus } from "@/hooks/useTranscription";
+import { useCharacters } from "@/hooks/useCharacters";
+import { toast } from "sonner";
+import { CosmicCard } from "@/components/cosmic/CosmicCard";
+import { useAudioValidation, type AudioValidationMetadata } from "@/hooks/useAudioValidation";
+import { Observability } from "@/lib/observability";
+import { UploadSection } from "./UploadSection";
+import { TransformationPanel } from "./TransformationPanel";
+import { TranscribeActionFooter } from "./TranscribeActionFooter";
+import { TranscriptionOverlay } from "./TranscriptionOverlay";
+import { assetsService } from "@/services/assetsService";
+import type { TranscribeRequest, TranscriptionResult } from "@/schemas/transcription";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { MarkdownPreview } from "@/components/ui/MarkdownPreview";
+import { MysticRecipeTicker } from "./MysticRecipeTicker";
+import { Copy, Loader2, Sparkles } from "lucide-react";
+import { RuneBorder } from "@/components/ui/mystical";
+import { getTranscribeDisabledReason } from "./getTranscribeDisabledReason";
+import { supabase } from "@/integrations/supabase/client";
+
+interface AudioTranscribeTabProps {
+  projectId?: string;
+}
+
+const UPLOAD_MESSAGES = [
+  "Convocando cristais sonoros...",
+  "Abrindo o portal de ondas arcanas...",
+  "Alinhando runas de captura sonora...",
+];
+
+const TRANSCRIBE_MESSAGES = [
+  "Lendo sussurros entre as dimensões...",
+  "Convertendo ecos em pergaminhos...",
+  "Os arcanos estão traduzindo cada sílaba...",
+];
+
+function pickMessage(messages: string[]): string {
+  return messages[Math.floor(Math.random() * messages.length)] ?? messages[0];
+}
+
+export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
+  const { transcribeAudio, transformTranscription, isTranscribing, isTransforming, history } = useTranscription();
+  const { characters, defaultCharacter } = useCharacters();
+  const { validateAudio, acceptedExtensions, maxSizeMB } = useAudioValidation();
+
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileMetadata, setFileMetadata] = useState<AudioValidationMetadata | null>(null);
+  const [validationMessage, setValidationMessage] = useState<string | null>(null);
+  const [traceId, setTraceId] = useState<string | null>(null);
+  const [language, setLanguage] = useState("pt");
+  const [selectedCharacterId, setSelectedCharacterId] = useState<string | undefined>(defaultCharacter?.id);
+  const [applyTransformation, setApplyTransformation] = useState(false);
+  const [transformationType, setTransformationType] = useState<"post" | "resumo" | "newsletter" | "roteiro">("post");
+  const [transformationLength, setTransformationLength] = useState<"short" | "medium" | "long">("medium");
+
+  const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStage, setProcessingStage] = useState<"upload" | "transcribe">("upload");
+  const [processingOverlayMessage, setProcessingOverlayMessage] = useState(UPLOAD_MESSAGES[0]);
+  const [result, setResult] = useState<TranscriptionResult | null>(null);
+  const [transformedText, setTransformedText] = useState<string | null>(null);
+  const [isTransformationPending, setIsTransformationPending] = useState(false);
+  const [viewMarkdown, setViewMarkdown] = useState(true);
+  const lastRequestedLanguage = useRef(language);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastStatusReportedRef = useRef<string | null>(null);
+  const { transcription: liveTranscription, isLoading: isPolling } = useTranscriptionStatus(result?.transcriptionId ?? null);
+  const progressIntervalRef = useRef<number | null>(null);
+  const [overlayProgress, setOverlayProgress] = useState<number>(0);
+  const [processingStartTs, setProcessingStartTs] = useState<number | null>(null);
+  const [isStalled, setIsStalled] = useState<boolean>(false);
+
+  const isJobRunning = Boolean(result && (result.status === "queued" || result.status === "processing"));
+  const isJobRunningDisplay = isJobRunning || isPolling;
+
+  const disabledReason = getTranscribeDisabledReason({
+    selectedFile,
+    projectId,
+    validationMessage,
+    isUploading,
+    isTranscribing,
+    isJobRunning: isJobRunningDisplay,
+    isTransforming,
+    applyTransformation,
+    selectedCharacterId,
+    hasCharacters: characters.length > 0,
+  });
+
+  // Considera o texto vindo do resultado inicial e o texto atualizado via polling
+  const hasTranscriptionText = Boolean(((result?.text ?? liveTranscription?.text) || "").trim().length > 0);
+  const showProcessingMessage = isJobRunning && !hasTranscriptionText;
+  const transcriptionFailed = result?.status === "failed";
+  const isNewExperienceEnabled = (import.meta.env.VITE_FEATURE_AUDIO_TRANSCRIPTION_V2 ?? "true") !== "false";
+  const processingStatusMessage =
+    result?.status === "queued"
+      ? "Aguardando a alquimia começar..."
+      : "Os arcanos estão traduzindo cada sílaba para o pergaminho digital.";
+  const failureDescription = result?.error ?? liveTranscription?.error ?? "Não conseguimos transcrever este áudio. Tente novamente.";
+
+  const currentHistoryEntry = useMemo(() => {
+    if (!result?.transcriptionId) return null;
+    return history.find((entry) => entry.transcription_id === result.transcriptionId) ?? null;
+  }, [history, result?.transcriptionId]);
+
+  useEffect(() => {
+    if (!currentHistoryEntry) return;
+    if (currentHistoryEntry.transformed_text) {
+      setTransformedText(currentHistoryEntry.transformed_text);
+      setIsTransformationPending(false);
+    }
+  }, [currentHistoryEntry]);
+
+  useEffect(() => {
+    if (!liveTranscription) return;
+
+    setResult((previous) => {
+      const baseLanguage = previous?.language ?? lastRequestedLanguage.current ?? language;
+      return {
+        transcriptionId: liveTranscription.id ?? previous?.transcriptionId ?? "",
+        text: liveTranscription.text ?? previous?.text ?? "",
+        language: liveTranscription.language ?? baseLanguage,
+        duration: typeof liveTranscription.duration_seconds === "number"
+          ? Number(liveTranscription.duration_seconds)
+          : previous?.duration,
+        status: liveTranscription.status ?? previous?.status ?? "processing",
+        error: liveTranscription.error ?? previous?.error,
+      };
+    });
+
+    const currentStatus = liveTranscription.status ?? null;
+
+    // NOVO: controlar overlay pelo status do polling
+    if (currentStatus === "queued" || currentStatus === "processing") {
+      setProcessingStage("transcribe");
+      setProcessingOverlayMessage(pickMessage(TRANSCRIBE_MESSAGES));
+      setIsProcessing(true);
+    }
+    if (currentStatus === "completed" || currentStatus === "failed") {
+      setIsProcessing(false);
+      // Completar a barra e limpar intervalo
+      setOverlayProgress(100);
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      setIsStalled(false);
+    }
+
+    if (currentStatus && lastStatusReportedRef.current !== currentStatus) {
+      lastStatusReportedRef.current = currentStatus;
+      Observability.trackEvent("audio_transcription_status_update", {
+        transcriptionId: liveTranscription.id,
+        status: currentStatus,
+        traceId,
+        assetId: liveTranscription.asset_id,
+        hasText: Boolean(liveTranscription.text),
+        error: liveTranscription.error ?? null,
+      });
+
+      if ((currentStatus === "completed" || currentStatus === "failed") && traceId) {
+        setTraceId(null);
+      }
+    }
+
+    if (liveTranscription.status === "failed") {
+      toast.error("Transcrição falhou", {
+        description: liveTranscription.error ?? "Tente novamente em instantes.",
+      });
+    }
+  }, [language, liveTranscription, traceId]);
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null;
+    const validation = validateAudio(file);
+
+    if (!validation.isValid) {
+      setSelectedFile(null);
+      setFileMetadata(null);
+      const errorMessage = validation.error?.message ?? "Falha ao validar o arquivo selecionado";
+      setValidationMessage(errorMessage);
+      const failureTraceId = crypto.randomUUID();
+      setTraceId(failureTraceId);
+      Observability.trackEvent("audio_transcription_validation_failure", {
+        traceId: failureTraceId,
+        reason: validation.error?.code ?? "unknown",
+        message: errorMessage,
+        mimeType: file?.type ?? "",
+        name: file?.name ?? null,
+        sizeBytes: file?.size ?? null,
+      });
+      toast.error("Arquivo inválido", { description: errorMessage });
+      if (event.target) {
+        event.target.value = "";
+      }
+      return;
+    }
+
+    setValidationMessage(null);
+    setSelectedFile(file);
+    setFileMetadata(validation.metadata ?? null);
+    const newTraceId = crypto.randomUUID();
+    setTraceId(newTraceId);
+    Observability.trackEvent("audio_transcription_file_ready", {
+      traceId: newTraceId,
+      mimeType: validation.metadata?.mimeType || file?.type || "",
+      extension: validation.metadata?.extension,
+      sizeMB: validation.metadata?.sizeMB ?? (file?.size ?? 0) / (1024 * 1024),
+    });
+  };
+
+  useEffect(() => {
+    const shouldTransform =
+      applyTransformation &&
+      isTransformationPending &&
+      Boolean(result?.transcriptionId) &&
+      Boolean(selectedCharacterId) &&
+      liveTranscription?.status === "completed" &&
+      Boolean(liveTranscription.text);
+
+    if (!shouldTransform) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const runTransformation = async () => {
+      try {
+        const transformed = await transformTranscription({
+          transcriptionId: result!.transcriptionId,
+          characterId: selectedCharacterId!,
+          transformationType,
+          transformationLength,
+        });
+
+        if (!cancelled) {
+          setTransformedText(transformed ?? null);
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          toast.error("Falha ao transformar o texto", {
+            description: error?.message ?? "Tente novamente em instantes.",
+          });
+        }
+      } finally {
+        if (!cancelled) {
+          setIsTransformationPending(false);
+        }
+      }
+    };
+
+    runTransformation();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    applyTransformation,
+    isTransformationPending,
+    liveTranscription?.status,
+    liveTranscription?.text,
+    result?.transcriptionId,
+    selectedCharacterId,
+    transformationLength,
+    transformationType,
+    transformTranscription,
+  ]);
+
+  const handleTranscribe = async () => {
+    if (!selectedFile) {
+      toast.error("Selecione um arquivo de áudio");
+      return;
+    }
+
+    if (!projectId) {
+      toast.error("Projeto não configurado", {
+        description: "Selecione um projeto válido antes de transcrever o áudio.",
+      });
+      Observability.trackEvent("audio_transcription_failure", {
+        traceId: traceId ?? crypto.randomUUID(),
+        stage: "validation",
+        reason: "missing_project_id",
+      });
+      return;
+    }
+
+    try {
+      lastRequestedLanguage.current = language;
+      setIsUploading(true);
+      setIsProcessing(true);
+      setProcessingStage("upload");
+      setProcessingOverlayMessage(pickMessage(UPLOAD_MESSAGES));
+      setOverlayProgress(0);
+      setProcessingStartTs(Date.now());
+      setIsStalled(false);
+      setTransformedText(null);
+      setIsTransformationPending(applyTransformation && Boolean(selectedCharacterId));
+
+      const activeTraceId = traceId ?? crypto.randomUUID();
+      setTraceId(activeTraceId);
+      const basePayload = {
+        traceId: activeTraceId,
+        mimeType: fileMetadata?.mimeType || selectedFile.type || "",
+        sizeMB: fileMetadata?.sizeMB ?? selectedFile.size / (1024 * 1024),
+        applyTransformation,
+        characterId: applyTransformation ? selectedCharacterId ?? null : null,
+        language,
+      };
+
+      Observability.trackEvent("audio_transcription_attempt", basePayload);
+      toast.info("Fazendo upload do arquivo...", { id: "upload" });
+
+      const uploadResult = await assetsService.uploadFile({
+        file: selectedFile,
+        projectId,
+        type: "audio",
+        onProgress: (p) => setOverlayProgress(Math.max(0, Math.min(100, Math.round(p))))
+      });
+
+      if (uploadResult.error || !uploadResult.data) {
+        const failureMessage = uploadResult.error?.message || "Tente novamente";
+        toast.error("Falha no upload do áudio", { description: failureMessage });
+        Observability.trackEvent("audio_transcription_failure", {
+          ...basePayload,
+          stage: "upload",
+          reason: failureMessage,
+          status: uploadResult.error?.status ?? uploadResult.error?.statusCode,
+          requestId: uploadResult.error?.requestId ?? uploadResult.error?.id,
+        });
+        Observability.trackEvent("metric.audio_transcription_success_rate", {
+          traceId: activeTraceId,
+          success: false,
+          stage: "upload",
+        });
+        return;
+      }
+
+      setProcessingStage("transcribe");
+      setProcessingOverlayMessage(pickMessage(TRANSCRIBE_MESSAGES));
+      // Iniciar progresso estimado até ~85% enquanto o worker processa
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
+      setOverlayProgress((prev) => Math.max(prev, 20));
+      progressIntervalRef.current = window.setInterval(() => {
+        setOverlayProgress((prev) => {
+          const next = prev + Math.random() * 3 + 1; // incremento suave
+          return Math.min(next, 85);
+        });
+      }, 900);
+
+      const params: TranscribeRequest = {
+        assetId: uploadResult.data.id,
+        language,
+        characterId: applyTransformation ? selectedCharacterId : undefined,
+        applyTransformation,
+        transformationType: applyTransformation ? transformationType : undefined,
+        transformationLength: applyTransformation ? transformationLength : undefined,
+      };
+
+      const response = await transcribeAudio(params);
+
+      if (response.error) {
+        const failureMessage = response.error.message || "Tente novamente";
+        toast.error("Falha na transcrição", { description: failureMessage });
+        Observability.trackEvent("audio_transcription_failure", {
+          ...basePayload,
+          stage: "transcription",
+          reason: failureMessage,
+          status: response.error.status,
+          requestId: response.error.requestId,
+        });
+        Observability.trackEvent("metric.audio_transcription_success_rate", {
+          traceId: activeTraceId,
+          success: false,
+          stage: "transcription",
+        });
+        return;
+      }
+
+      if (response.data) {
+        setResult(response.data);
+      }
+
+      const hasImmediateText = Boolean(response.data?.text);
+      // Sempre comunicamos que o job está em andamento na primeira resposta assíncrona.
+      // Isso evita a impressão de conclusão instantânea antes do polling preencher o texto.
+      const toastTitle = hasImmediateText
+        ? applyTransformation
+          ? "Transcrição e transformação concluídas!"
+          : "Transcrição concluída!"
+        : "Transcrição em andamento";
+      const toastDescription = hasImmediateText
+        ? applyTransformation
+          ? "Texto transformado com sucesso."
+          : "Áudio transcrito com sucesso."
+        : "Estamos traduzindo o áudio. Avisaremos quando o texto estiver disponível.";
+
+      toast.success(toastTitle, { description: toastDescription });
+      Observability.trackEvent("audio_transcription_success", {
+        ...basePayload,
+        transformed: applyTransformation && hasImmediateText,
+        status: response.data?.status ?? "queued",
+      });
+      Observability.trackEvent("metric.audio_transcription_success_rate", {
+        traceId: activeTraceId,
+        success: true,
+      });
+
+      setSelectedFile(null);
+      setFileMetadata(null);
+      setValidationMessage(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } catch (error: any) {
+      toast.error("Erro ao processar", {
+        description: error.message || "Tente novamente",
+      });
+      const activeTraceId = traceId ?? crypto.randomUUID();
+      setTraceId(activeTraceId);
+      Observability.trackEvent("audio_transcription_failure", {
+        traceId: activeTraceId,
+        stage: "unexpected",
+        reason: error?.message || "unknown",
+      });
+      Observability.trackEvent("metric.audio_transcription_success_rate", {
+        traceId: activeTraceId,
+        success: false,
+        stage: "unexpected",
+      });
+    } finally {
+      setIsUploading(false);
+      // Overlay permanece ativo; será desligado pelo polling quando status for completed/failed
+    }
+  };
+
+  // Timeout gentil: após 120s sem concluir, oferecer ações (rechecar/forçar)
+  useEffect(() => {
+    if (!isProcessing || !processingStartTs) return;
+    const timeoutMs = 120_000; // 2 minutos
+    const id = window.setTimeout(() => {
+      setIsStalled(true);
+    }, timeoutMs);
+    return () => window.clearTimeout(id);
+  }, [isProcessing, processingStartTs]);
+
+  const checkTranscriptionStatus = async () => {
+    try {
+      if (!result?.transcriptionId) return;
+      const { data, error } = await supabase
+        .from('transcriptions')
+        .select('*')
+        .eq('id', result.transcriptionId)
+        .single();
+      if (error) throw error;
+      setResult((prev) => ({
+        transcriptionId: data.id,
+        text: data.text ?? prev?.text ?? "",
+        language: data.language ?? prev?.language ?? "pt",
+        duration: prev?.duration,
+        status: data.status ?? prev?.status ?? "processing",
+        error: data.error ?? prev?.error ?? null,
+      }));
+      if (data.status === 'completed') {
+        setIsProcessing(false);
+        setOverlayProgress(100);
+        setIsStalled(false);
+      }
+    } catch (err: any) {
+      toast.error("Falha ao checar status", { description: err?.message ?? "Tente novamente." });
+    }
+  };
+
+  const forceWorkerProcessing = async () => {
+    try {
+      if (!result?.transcriptionId) return;
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/whisper_processor`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ transcriptionId: result.transcriptionId }),
+      });
+      const raw = await resp.text();
+      if (!resp.ok) {
+        toast.error("Falha ao acionar processamento", { description: raw || `HTTP ${resp.status}` });
+        return;
+      }
+      toast.success("Processamento acionado", { description: "Vamos rechecar o status." });
+      await checkTranscriptionStatus();
+    } catch (err: any) {
+      toast.error("Erro ao forçar processamento", { description: err?.message ?? "Tente novamente." });
+    }
+  };
+
+  const showTransformationCard = applyTransformation || Boolean(transformedText);
+
+  return (
+    <>
+      <TranscriptionOverlay
+        visible={isProcessing}
+        stage={processingStage}
+        message={processingOverlayMessage}
+        traceId={traceId}
+        progress={overlayProgress}
+        isStalled={isStalled}
+        onRetry={forceWorkerProcessing}
+        onCheck={checkTranscriptionStatus}
+      />
+
+      <CosmicCard title="Transcrever Áudio" description="Converta áudio em texto e transforme com personagens">
+        <div className="space-y-6">
+          <UploadSection
+            onSelectFile={handleFileSelect}
+            inputRef={fileInputRef}
+            selectedFile={selectedFile}
+            metadata={fileMetadata}
+            validationMessage={validationMessage}
+            acceptedExtensions={acceptedExtensions}
+            maxSizeMB={maxSizeMB}
+            isBusy={isUploading || isTranscribing}
+            language={language}
+            onLanguageChange={setLanguage}
+            isTranscribing={isTranscribing}
+          />
+
+          <TransformationPanel
+            applyTransformation={applyTransformation}
+            disableToggle={isTranscribing || characters.length === 0}
+            onToggle={setApplyTransformation}
+            characters={characters}
+            selectedCharacterId={selectedCharacterId}
+            onCharacterChange={(value) => setSelectedCharacterId(value || undefined)}
+            transformationType={transformationType}
+            onTypeChange={setTransformationType}
+            transformationLength={transformationLength}
+            onLengthChange={setTransformationLength}
+            isTranscribing={isTranscribing}
+          />
+
+          <TranscribeActionFooter
+            onSubmit={handleTranscribe}
+            disabled={Boolean(disabledReason)}
+            disabledReason={disabledReason}
+            isUploading={isUploading}
+            isTranscribing={isTranscribing}
+            isJobRunning={isJobRunningDisplay}
+            showCharacterAlert={characters.length === 0}
+          />
+
+          {result && isNewExperienceEnabled && (
+            <div className="space-y-4">
+              <MysticRecipeTicker />
+
+              <RuneBorder glow={false} borderStyle="solid" showCorners={false} paddingClass="p-4 sm:p-6" className="bg-background/70 border-border/60">
+                <div className="flex items-start justify-between gap-4 mb-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground">Texto Original</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {transcriptionFailed ? "Não foi possível gerar a transcrição" : "Transcrição direta do áudio"}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigator.clipboard.writeText(result.text)}
+                    disabled={!hasTranscriptionText}
+                  >
+                    <Copy className="w-4 h-4 mr-2" /> Copiar
+                  </Button>
+                </div>
+                <div className="flex items-center gap-2 mb-2">
+                  <input
+                    id="md-view-audio"
+                    type="checkbox"
+                    checked={viewMarkdown}
+                    onChange={(e) => setViewMarkdown(e.target.checked)}
+                    aria-controls="audio-transcription-viewer"
+                  />
+                  <label htmlFor="md-view-audio" className="text-xs text-muted-foreground">
+                    Ler em Markdown
+                  </label>
+                </div>
+
+                {transcriptionFailed ? (
+                  <div
+                    role="alert"
+                    className="flex items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {failureDescription}
+                  </div>
+                ) : showProcessingMessage ? (
+                  <div
+                    role="status"
+                    aria-live="polite"
+                    className="flex items-center gap-2 rounded-lg border border-dashed border-border/60 bg-background/60 p-4 text-sm text-muted-foreground"
+                  >
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {processingStatusMessage}
+                  </div>
+                ) : viewMarkdown ? (
+                  <div
+                    id="audio-transcription-viewer"
+                    className="min-h-[180px] max-h-[360px] bg-background/60 rounded-md p-3 overflow-y-auto scrollbar-mystic"
+                  >
+                    <MarkdownPreview markdown={result.text} />
+                  </div>
+                ) : (
+                  <Textarea
+                    id="audio-transcription-viewer"
+                    value={result.text}
+                    readOnly
+                    className="min-h-[180px] max-h-[360px] whitespace-pre-wrap scrollbar-mystic"
+                  />
+                )}
+              </RuneBorder>
+
+              {showTransformationCard && (
+                <RuneBorder glow={false} borderStyle="solid" showCorners={false} paddingClass="p-4 sm:p-6" className="bg-background/70 border-border/60">
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-foreground">Texto Transformado</h3>
+                      <p className="text-sm text-muted-foreground">
+                        {isTransformationPending
+                          ? "O personagem está alinhando a voz..."
+                          : transformedText
+                            ? "Resultado com a essência do personagem"
+                            : "Clique em Refresh quando quiser gerar uma nova versão"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigator.clipboard.writeText(transformedText ?? "")}
+                        disabled={!transformedText}
+                      >
+                        <Copy className="w-4 h-4 mr-2" /> Copiar
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={
+                          isTransforming ||
+                          isJobRunningDisplay ||
+                          !currentHistoryEntry?.transcription_id ||
+                          !selectedCharacterId
+                        }
+                        onClick={async () => {
+                          if (!currentHistoryEntry?.transcription_id || !selectedCharacterId) return;
+                          setIsTransformationPending(true);
+                          try {
+                            const refreshed = await transformTranscription({
+                              transcriptionId: currentHistoryEntry.transcription_id,
+                              characterId: selectedCharacterId,
+                              transformationType,
+                              transformationLength,
+                            });
+                            setTransformedText(refreshed ?? null);
+                          } catch (error: any) {
+                            toast.error("Falha ao transformar o texto", {
+                              description: error?.message ?? "Tente novamente em instantes.",
+                            });
+                          } finally {
+                            setIsTransformationPending(false);
+                          }
+                        }}
+                      >
+                        {isTransforming ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Renovando...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4 mr-2" />
+                            Refresh
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {isTransformationPending && !transformedText ? (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="flex items-center gap-2 rounded-lg border border-dashed border-border/60 bg-background/60 p-4 text-sm text-muted-foreground"
+                    >
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Aguarde alguns instantes enquanto o personagem manifesta a fala.
+                    </div>
+                  ) : !transformedText && applyTransformation && !hasTranscriptionText ? (
+                    <div className="rounded-lg border border-dashed border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+                      Precisamos concluir a transcrição original antes de aplicar a voz do personagem.
+                    </div>
+                  ) : viewMarkdown ? (
+                    <div className="min-h-[180px] max-h-[360px] bg-background/60 rounded-md p-3 overflow-y-auto scrollbar-mystic">
+                      <MarkdownPreview markdown={transformedText ?? ""} />
+                    </div>
+                  ) : (
+                    <Textarea
+                      value={transformedText ?? ""}
+                      readOnly
+                      className="min-h-[180px] max-h-[360px] whitespace-pre-wrap scrollbar-mystic"
+                    />
+                  )}
+                </RuneBorder>
+              )}
+            </div>
+          )}
+
+          {result && !isNewExperienceEnabled && (
+            <div className="space-y-4">
+              <RuneBorder glow={false} borderStyle="solid" showCorners={false} paddingClass="p-4 sm:p-6" className="bg-background/70 border-border/60">
+                <div className="flex items-start justify-between gap-4 mb-3">
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground">Transcrição (modo legado)</h3>
+                    <p className="text-sm text-muted-foreground">Visualização simplificada controlada por feature flag.</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => navigator.clipboard.writeText(result.text)}
+                    disabled={!hasTranscriptionText}
+                  >
+                    <Copy className="w-4 h-4 mr-2" /> Copiar
+                  </Button>
+                </div>
+                <Textarea
+                  value={
+                    transcriptionFailed
+                      ? failureDescription
+                      : hasTranscriptionText
+                        ? result.text
+                        : processingStatusMessage
+                  }
+                  readOnly
+                  className="min-h-[180px] whitespace-pre-wrap scrollbar-mystic"
+                />
+                {showProcessingMessage && (
+                  <p className="mt-2 text-xs text-muted-foreground">{processingStatusMessage}</p>
+                )}
+              </RuneBorder>
+
+              {showTransformationCard && (
+                <RuneBorder glow={false} borderStyle="solid" showCorners={false} paddingClass="p-4 sm:p-6" className="bg-background/70 border-border/60">
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div>
+                      <h3 className="text-lg font-semibold text-foreground">Transformação</h3>
+                      <p className="text-sm text-muted-foreground">Versão controlada em rollout — sem markdown.</p>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        isTransforming ||
+                        isJobRunningDisplay ||
+                        !currentHistoryEntry?.transcription_id ||
+                        !selectedCharacterId
+                      }
+                      onClick={async () => {
+                        if (!currentHistoryEntry?.transcription_id || !selectedCharacterId) return;
+                        setIsTransformationPending(true);
+                        try {
+                          const refreshed = await transformTranscription({
+                            transcriptionId: currentHistoryEntry.transcription_id,
+                            characterId: selectedCharacterId,
+                            transformationType,
+                            transformationLength,
+                          });
+                          setTransformedText(refreshed ?? null);
+                        } catch (error: any) {
+                          toast.error("Falha ao transformar o texto", {
+                            description: error?.message ?? "Tente novamente em instantes.",
+                          });
+                        } finally {
+                          setIsTransformationPending(false);
+                        }
+                      }}
+                    >
+                      {isTransforming ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Renovando...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4 mr-2" />
+                          Refresh
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  <Textarea
+                    value={
+                      isTransformationPending && !transformedText
+                        ? "O personagem está manifestando a nova versão..."
+                        : transformedText ?? ""
+                    }
+                    readOnly
+                    className="min-h-[180px] whitespace-pre-wrap scrollbar-mystic"
+                  />
+                </RuneBorder>
+              )}
+            </div>
+          )}
+        </div>
+      </CosmicCard>
+    </>
+  );
+}
+
+interface ResultCardProps {
+  title: string;
+  subtitle: string;
+  value: string;
+  isLoading?: boolean;
+  emptyMessage?: string;
+}
+
+function ResultCard({ title, subtitle, value, isLoading = false, emptyMessage }: ResultCardProps) {
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value);
+    toast.success("Texto copiado!");
+  };
+
+  return (
+    <RuneBorder glow={false} borderStyle="solid" showCorners={false} paddingClass="p-4 sm:p-6" className="bg-background/70 border-border/60">
+      <div className="flex items-start justify-between gap-4 mb-3">
+        <div>
+          <h3 className="text-lg font-semibold text-foreground">{title}</h3>
+          <p className="text-sm text-muted-foreground">{subtitle}</p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={handleCopy} disabled={!value}>
+          <Copy className="w-4 h-4 mr-2" /> Copiar
+        </Button>
+      </div>
+
+      {isLoading && !value ? (
+        <div className="flex items-center gap-2 rounded-lg border border-dashed border-border/60 bg-background/60 p-4 text-sm text-muted-foreground">
+          <Sparkles className="h-4 w-4 animate-spin" />
+          {emptyMessage ?? "Gerando fala do personagem..."}
+        </div>
+      ) : (
+        <Textarea value={value} readOnly className="min-h-[180px] whitespace-pre-wrap" />
+      )}
+    </RuneBorder>
+  );
+}
+

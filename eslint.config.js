@@ -21,6 +21,17 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": "off",
+      // Segurança: proibir eval e new Function
+      "no-eval": "error",
+      "no-new-func": "error",
+      // Proibir dangerouslySetInnerHTML no JSX (use SafeHtml com sanitize)
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: "dangerouslySetInnerHTML proibido. Use <SafeHtml html={...}/> com sanitizeHTML.",
+        },
+      ],
     },
   },
 );
