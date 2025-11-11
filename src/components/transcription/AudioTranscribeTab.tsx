@@ -183,6 +183,13 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
   useEffect(() => {
     if (!liveTranscription) return;
 
+    console.debug("[AudioTranscribeTab] liveTranscription polled", {
+      transcriptionId: liveTranscription.id ?? result?.transcriptionId ?? null,
+      status: liveTranscription.status,
+      hasText: Boolean(liveTranscription.text),
+      error: liveTranscription.error,
+    });
+
     setResult((previous) => {
       const baseLanguage = previous?.language ?? lastRequestedLanguage.current ?? language;
       const rawDuration = (liveTranscription as Record<string, unknown>)?.["duration_seconds"];
@@ -240,7 +247,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         description: liveTranscription.error ?? "Tente novamente em instantes.",
       });
     }
-  }, [language, liveTranscription, traceId]);
+  }, [language, liveTranscription, traceId, result?.transcriptionId]);
 
   const handleAudioFileSelection = useCallback(
     (file: File | null, source: "upload" | "recording") => {
@@ -648,6 +655,12 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         .eq("id", result.transcriptionId)
         .single();
       if (error) throw error;
+      console.debug("[AudioTranscribeTab] checkTranscriptionStatus", {
+        transcriptionId: result.transcriptionId,
+        status: data.status,
+        hasText: Boolean(data.text),
+        error: data.error,
+      });
       setResult((prev) => ({
         transcriptionId: data.id,
         text: typeof data.text === "string" ? data.text : prev?.text ?? "",
@@ -664,6 +677,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       return { status: data.status ?? null };
     } catch (rawError: unknown) {
       const error = normalizeError(rawError);
+      console.error("[AudioTranscribeTab] checkTranscriptionStatus error", error);
       toast.error("Falha ao checar status", { description: error.message ?? "Tente novamente." });
       return null;
     }
