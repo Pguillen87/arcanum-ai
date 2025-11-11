@@ -5,6 +5,8 @@ export const AUDIO_EXTENSIONS = [
   ".ogg",
   ".aac",
   ".m4a",
+  ".m4b",
+  ".mp4",
   ".flac",
 ] as const;
 
@@ -16,7 +18,11 @@ export const AUDIO_MIME_TYPES = [
   "audio/webm",
   "audio/ogg",
   "audio/aac",
+  "audio/mp4",
   "audio/x-m4a",
+  "audio/m4a",
+  "audio/m4b",
+  "audio/x-m4b",
   "audio/flac",
 ] as const;
 

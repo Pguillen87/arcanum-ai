@@ -85,6 +85,16 @@ export function useAudioValidation(options?: { maxSizeMB?: number }) {
       const sizeBytes = file.size;
       const sizeMB = sizeBytes / (1024 * 1024);
 
+      if (sizeBytes === 0) {
+        return {
+          isValid: false,
+          error: {
+            code: "invalid_size",
+            message: "O arquivo gerado está vazio. Grave ou selecione outro áudio.",
+          },
+        };
+      }
+
       if (hasSuspiciousDoubleExtension(sanitizedName)) {
         return {
           isValid: false,
@@ -103,11 +113,12 @@ export function useAudioValidation(options?: { maxSizeMB?: number }) {
         : false;
 
       if (!isMimeAccepted && !isExtensionAccepted) {
+        const acceptedList = AUDIO_EXTENSIONS.join(", ");
         return {
           isValid: false,
           error: {
             code: "invalid_type",
-            message: "Formato de arquivo não suportado",
+            message: `Formato de arquivo não suportado. Formatos aceitos: ${acceptedList}.`,
           },
         };
       }

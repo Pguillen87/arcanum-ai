@@ -73,13 +73,33 @@ function validateFileSize(sizeBytes: number, type: AssetType): { valid: boolean;
   return { valid: true };
 }
 
+function normalizeFileForUpload(file: File, type: AssetType): File {
+  if (type !== 'audio') {
+    return file;
+  }
+
+  if (file.type === 'video/webm') {
+    const normalizedName = file.name.toLowerCase().endsWith('.webm') ? file.name : `${file.name}.webm`;
+    return new File([file], normalizedName, { type: 'audio/webm' });
+  }
+
+  if (file.type === 'video/mp4') {
+    const normalizedName = file.name.toLowerCase().endsWith('.mp4') ? file.name : `${file.name}.mp4`;
+    return new File([file], normalizedName, { type: 'audio/mp4' });
+  }
+
+  return file;
+}
+
 export const assetsService: AssetsService = {
   async uploadFile(params) {
     try {
       const { projectId, type, file, onProgress } = params;
 
+      const uploadableFile = normalizeFileForUpload(file, type);
+
       // Validações
-      const sizeValidation = validateFileSize(file.size, type);
+      const sizeValidation = validateFileSize(uploadableFile.size, type);
       if (!sizeValidation.valid) {
         return { data: null, error: { message: sizeValidation.error } };
       }
@@ -90,11 +110,8 @@ export const assetsService: AssetsService = {
         return { data: null, error: { message: 'Usuário não autenticado' } };
       }
 
-      // Path no formato: {userId}/{projectId}/{timestamp}-{filename}
-      // IMPORTANTE: O primeiro segmento deve ser userId para as políticas RLS funcionarem
-      const path = `${userId}/${projectId}/${Date.now()}-${file.name}`;
+      const path = `${userId}/${projectId}/${Date.now()}-${uploadableFile.name}`;
 
-      // Criar registro de asset no banco (status: uploading)
       const { data: assetData, error: assetError } = await supabase
         .from('assets')
         .insert({
@@ -102,8 +119,8 @@ export const assetsService: AssetsService = {
           user_id: userId,
           storage_path: path,
           type: type,
-          size_bytes: file.size,
-          mimetype: file.type || null,
+          size_bytes: uploadableFile.size,
+          mimetype: uploadableFile.type || null,
           status: 'uploading',
         })
         .select()
@@ -114,12 +131,12 @@ export const assetsService: AssetsService = {
         return { data: null, error: assetError };
       }
 
-      // Upload direto para Supabase Storage
       const { data: uploadData, error: uploadError } = await supabase.storage
         .from(bucket)
-        .upload(path, file, {
+        .upload(path, uploadableFile, {
           cacheControl: '3600',
           upsert: false,
+          contentType: uploadableFile.type || undefined,
           onUploadProgress: (progress) => {
             if (onProgress) {
               const percent = (progress.loaded / progress.total) * 100;
@@ -129,23 +146,20 @@ export const assetsService: AssetsService = {
         });
 
       if (uploadError) {
-        // Deletar asset do banco se upload falhar
         await supabase.from('assets').delete().eq('id', assetData.id);
         Observability.trackError(uploadError);
         return { data: null, error: uploadError };
       }
 
-      // Atualizar status para 'ready'
       const { data: updatedAsset, error: updateError } = await supabase
         .from('assets')
-        .update({ status: 'ready' })
+        .update({ status: 'ready', mimetype: uploadableFile.type || null, size_bytes: uploadableFile.size })
         .eq('id', assetData.id)
         .select()
         .single();
 
       if (updateError) {
         Observability.trackError(updateError);
-        // Asset foi criado, mas status não foi atualizado - retornar asset mesmo assim
         return { data: assetData as Asset, error: null };
       }
 

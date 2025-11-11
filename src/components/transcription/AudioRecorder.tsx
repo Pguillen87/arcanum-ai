@@ -3,11 +3,14 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Mic, Square, RotateCcw } from "lucide-react";
 import { normalizeError } from "@/utils/error";
+import { formatBytes } from "@/utils/media/formatBytes";
+import { AudioPreviewCard } from "./player/AudioPreviewCard";
 
 interface AudioRecorderProps {
   onRecordingComplete: (file: File) => void;
   disabled?: boolean;
   maxDurationSeconds?: number;
+  hasPendingAudio?: boolean;
 }
 
 interface RecordingTimer {
@@ -27,17 +30,27 @@ export function AudioRecorder({
   onRecordingComplete,
   disabled = false,
   maxDurationSeconds = 300,
+  hasPendingAudio = false,
 }: AudioRecorderProps) {
   const [isSupported, setIsSupported] = useState<boolean>(true);
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
   const [hasRecording, setHasRecording] = useState<boolean>(false);
+  const [recordedFile, setRecordedFile] = useState<File | null>(null);
+  const [recordedUrl, setRecordedUrl] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const selectedMimeRef = useRef<{ mime: string; extension: string } | null>(null);
+
+  const revokeRecordedUrl = useCallback(() => {
+    if (recordedUrl) {
+      URL.revokeObjectURL(recordedUrl);
+      setRecordedUrl(null);
+    }
+  }, [recordedUrl]);
 
   const cleanup = useCallback(() => {
     if (timerRef.current) {
@@ -66,8 +79,9 @@ export function AudioRecorder({
     setIsSupported(true);
     return () => {
       cleanup();
+      revokeRecordedUrl();
     };
-  }, [cleanup]);
+  }, [cleanup, revokeRecordedUrl]);
 
   const stopRecordingInternal = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
@@ -90,21 +104,30 @@ export function AudioRecorder({
 
     if (!chunksRef.current.length) {
       setHasRecording(false);
-      toast.error("Nenhum áudio capturado", {
-        description: "Inicie a gravação novamente.",
+      toast.error("Nenhum audio capturado", {
+        description: "Inicie a gravacao novamente.",
       });
       return;
     }
 
+    const chunkCount = chunksRef.current.length;
     const blob = new Blob(chunksRef.current, {
       type: selectedMimeRef.current?.mime ?? "audio/webm",
+    });
+    console.debug("[AudioRecorder] blob capturado", {
+      chunkCount,
+      sizeBytes: blob.size,
+      type: blob.type,
     });
     chunksRef.current = [];
 
     if (blob.size === 0) {
+      console.warn("[AudioRecorder] blob vazio", {
+        chunkCount,
+      });
       setHasRecording(false);
-      toast.error("Falha ao capturar áudio", {
-        description: "O arquivo gerado está vazio.",
+      toast.error("Falha ao capturar audio", {
+        description: "O arquivo gerado esta vazio.",
       });
       return;
     }
@@ -114,15 +137,27 @@ export function AudioRecorder({
     const fileName = `gravacao-arcanum-${timestamp}.${extension}`;
     const fileType = selectedMimeRef.current?.mime ?? "audio/webm";
     const file = new File([blob], fileName, { type: fileType });
+    console.debug("[AudioRecorder] arquivo gerado", {
+      name: file.name,
+      sizeBytes: file.size,
+      type: file.type,
+    });
+    revokeRecordedUrl();
+    const objectUrl = URL.createObjectURL(file);
+    setRecordedUrl(objectUrl);
+    setRecordedFile(file);
     setHasRecording(true);
-    onRecordingComplete(file);
-  }, [onRecordingComplete]);
+  }, [revokeRecordedUrl]);
 
   const startRecording = useCallback(async () => {
     if (disabled) return;
+    if (hasPendingAudio) {
+      toast.info("Remova o audio atual antes de gravar outro.");
+      return;
+    }
     if (!isSupported) {
-      toast.error("Gravação não suportada", {
-        description: "Seu navegador não suporta gravação de áudio (MediaRecorder).",
+      toast.error("Gravacao nao suportada", {
+        description: "Seu navegador nao suporta gravacao de audio (MediaRecorder).",
       });
       return;
     }
@@ -130,10 +165,10 @@ export function AudioRecorder({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeCandidates: Array<{ mime: string; extension: string }> = [
-        { mime: "audio/mp4", extension: "m4a" },
         { mime: "audio/webm;codecs=opus", extension: "webm" },
-        { mime: "audio/ogg;codecs=opus", extension: "ogg" },
         { mime: "audio/webm", extension: "webm" },
+        { mime: "audio/ogg;codecs=opus", extension: "ogg" },
+        { mime: "audio/mp4", extension: "m4a" },
       ];
 
       const selected = mimeCandidates.find((candidate) =>
@@ -150,6 +185,8 @@ export function AudioRecorder({
       setElapsedSeconds(0);
       setIsRecording(true);
       setHasRecording(false);
+      setRecordedFile(null);
+      revokeRecordedUrl();
 
       mediaRecorder.addEventListener("dataavailable", handleDataAvailable);
       mediaRecorder.addEventListener("stop", () => {
@@ -172,6 +209,8 @@ export function AudioRecorder({
       cleanup();
       setIsRecording(false);
       setHasRecording(false);
+      setRecordedFile(null);
+      revokeRecordedUrl();
 
       const error = normalizeError(rawError);
 
@@ -189,7 +228,7 @@ export function AudioRecorder({
         });
       }
     }
-  }, [cleanup, disabled, handleDataAvailable, handleStop, isSupported, maxDurationSeconds, stopRecordingInternal]);
+  }, [cleanup, disabled, handleDataAvailable, handleStop, hasPendingAudio, isSupported, maxDurationSeconds, revokeRecordedUrl, stopRecordingInternal]);
 
   const stopRecording = useCallback(() => {
     stopRecordingInternal();
@@ -200,19 +239,34 @@ export function AudioRecorder({
     setIsRecording(false);
     setHasRecording(false);
     setElapsedSeconds(0);
-    toast.info("Gravação descartada");
-  }, [cleanup]);
+    setRecordedFile(null);
+    revokeRecordedUrl();
+    toast.info("Gravacao descartada");
+  }, [cleanup, revokeRecordedUrl]);
+
+  const handleSaveRecording = useCallback(() => {
+    if (!recordedFile) {
+      return;
+    }
+    onRecordingComplete(recordedFile);
+    toast.success("Gravacao adicionada ao envio");
+    setRecordedFile(null);
+    revokeRecordedUrl();
+    setHasRecording(false);
+    setElapsedSeconds(0);
+  }, [onRecordingComplete, recordedFile, revokeRecordedUrl]);
 
   useEffect(() => {
     return () => {
       cleanup();
+      revokeRecordedUrl();
     };
-  }, [cleanup]);
+  }, [cleanup, revokeRecordedUrl]);
 
   if (!isSupported) {
     return (
       <div className="rounded-lg border border-dashed border-border/50 bg-background/60 p-4 text-sm text-muted-foreground">
-        Gravação direta indisponível neste navegador.
+        Gravacao direta indisponivel neste navegador.
       </div>
     );
   }
@@ -225,7 +279,7 @@ export function AudioRecorder({
         <div>
           <h3 className="text-sm font-medium text-foreground">Gravar com microfone</h3>
           <p className="text-xs text-muted-foreground">
-            Capture áudio diretamente do seu microfone (limite de {Math.floor(maxDurationSeconds / 60)} minutos).
+            Capture audio diretamente do seu microfone (limite de {Math.floor(maxDurationSeconds / 60)} minutos).
           </p>
         </div>
         <div className="text-xs font-mono text-muted-foreground">
@@ -239,17 +293,17 @@ export function AudioRecorder({
           variant={isRecording ? "destructive" : "default"}
           size="sm"
           onClick={isRecording ? stopRecording : startRecording}
-          disabled={disabled}
+          disabled={disabled || (hasPendingAudio && !isRecording)}
         >
           {isRecording ? (
             <>
               <Square className="mr-2 h-4 w-4" />
-              Parar gravação
+              Parar gravacao
             </>
           ) : (
             <>
               <Mic className="mr-2 h-4 w-4" />
-              Iniciar gravação
+              Iniciar gravacao
             </>
           )}
         </Button>
@@ -259,7 +313,7 @@ export function AudioRecorder({
           variant="outline"
           size="sm"
           onClick={discardRecording}
-          disabled={isRecording || !hasRecording}
+          disabled={isRecording || (!hasRecording && !recordedFile)}
         >
           <RotateCcw className="mr-2 h-4 w-4" />
           Descartar
@@ -267,8 +321,24 @@ export function AudioRecorder({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        O arquivo gravado será convertido para `webm` (opus) e anexado automaticamente ao fluxo de transcrição.
+        O arquivo gravado sera convertido para `webm` (opus) e anexado automaticamente ao fluxo de transcricao.
       </p>
+
+      {recordedFile && recordedUrl ? (
+        <AudioPreviewCard
+          title="Gravacao pronta"
+          description="Revise antes de enviar para a transcricao."
+          fileName={recordedFile.name}
+          fileSizeLabel={formatBytes(recordedFile.size)}
+          sourceLabel="Gravacao"
+          url={recordedUrl}
+          onRemove={discardRecording}
+          onPrimaryAction={handleSaveRecording}
+          primaryLabel="Salvar gravacao"
+          downloadFileName={recordedFile.name}
+          downloadLabel="Baixar"
+        />
+      ) : null}
     </div>
   );
 }

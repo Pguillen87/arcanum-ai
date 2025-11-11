@@ -22,8 +22,10 @@ import { Copy, Loader2, Sparkles } from "lucide-react";
 import { RuneBorder } from "@/components/ui/mystical";
 import { getTranscribeDisabledReason } from "./getTranscribeDisabledReason";
 import { AudioRecorder } from "./AudioRecorder";
+import { AudioPreviewCard } from "./player/AudioPreviewCard";
 import { supabase } from "@/integrations/supabase/client";
 import { normalizeError } from "@/utils/error";
+import { formatBytes } from "@/utils/media/formatBytes";
 
 interface AudioTranscribeTabProps {
   projectId?: string;
@@ -48,6 +50,27 @@ function pickMessage(messages: string[]): string {
 interface ExtendedTranscriptionResult extends TranscriptionResult {
   assetId?: string;
   traceId?: string;
+}
+
+interface CurrentAudioSource {
+  origin: "upload" | "recording";
+  file: File;
+  url: string;
+  metadata: AudioValidationMetadata | null;
+}
+
+function normalizeAudioFile(file: File): File {
+  if (file.type === "video/webm") {
+    const normalizedName = file.name.toLowerCase().endsWith(".webm") ? file.name : `${file.name}.webm`;
+    return new File([file], normalizedName, { type: "audio/webm" });
+  }
+
+  if (file.type === "video/mp4") {
+    const normalizedName = file.name.toLowerCase().endsWith(".mp4") ? file.name : `${file.name}.mp4`;
+    return new File([file], normalizedName, { type: "audio/mp4" });
+  }
+
+  return file;
 }
 
 export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
@@ -77,9 +100,11 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
   const [isNewExperienceEnabled] = useState(
     (import.meta.env.VITE_FEATURE_AUDIO_TRANSCRIPTION_V2 ?? "true") !== "false",
   );
+  const [currentAudioSource, setCurrentAudioSource] = useState<CurrentAudioSource | null>(null);
   const lastRequestedLanguage = useRef(language);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioUrlRef = useRef<string | null>(null);
   const lastStatusReportedRef = useRef<string | null>(null);
   const { transcription: liveTranscription, isLoading: isPolling } = useTranscriptionStatus(result?.transcriptionId ?? null);
   const progressIntervalRef = useRef<number | null>(null);
@@ -126,6 +151,35 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
     }
   }, [currentHistoryEntry]);
 
+  const releaseAudioSource = useCallback(() => {
+    if (audioUrlRef.current) {
+      URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = null;
+    }
+  }, []);
+
+  const clearAudioSelection = useCallback(
+    (options?: { preserveValidation?: boolean }) => {
+      releaseAudioSource();
+      setCurrentAudioSource(null);
+      setSelectedFile(null);
+      setFileMetadata(null);
+      if (!options?.preserveValidation) {
+        setValidationMessage(null);
+      }
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    },
+    [releaseAudioSource],
+  );
+
+  useEffect(() => {
+    return () => {
+      releaseAudioSource();
+    };
+  }, [releaseAudioSource]);
+
   useEffect(() => {
     if (!liveTranscription) return;
 
@@ -160,8 +214,8 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       setIsStalled(false);
 
       if (currentStatus === "failed") {
-        const errorMessage = liveTranscription.error ?? "Não foi possível gerar a transcrição.";
-        toast.error("Falha na transcrição", { description: errorMessage });
+        const errorMessage = liveTranscription.error ?? "Nao foi possivel gerar a transcricao.";
+        toast.error("Falha na transcricao", { description: errorMessage });
       }
     }
 
@@ -182,7 +236,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
     }
 
     if (liveTranscription.status === "failed") {
-      toast.error("Transcrição falhou", {
+      toast.error("Transcricao falhou", {
         description: liveTranscription.error ?? "Tente novamente em instantes.",
       });
     }
@@ -191,17 +245,16 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
   const handleAudioFileSelection = useCallback(
     (file: File | null, source: "upload" | "recording") => {
       if (!file) {
-        setSelectedFile(null);
-        setFileMetadata(null);
+        clearAudioSelection({ preserveValidation: true });
         setValidationMessage("Nenhum arquivo selecionado");
         return false;
       }
 
-      const validation = validateAudio(file);
+      const normalizedFile = normalizeAudioFile(file);
+      const validation = validateAudio(normalizedFile);
 
       if (!validation.isValid) {
-        setSelectedFile(null);
-        setFileMetadata(null);
+        clearAudioSelection({ preserveValidation: true });
         const errorMessage = validation.error?.message ?? "Falha ao validar o arquivo selecionado";
         setValidationMessage(errorMessage);
         const failureTraceId = crypto.randomUUID();
@@ -210,38 +263,48 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
           traceId: failureTraceId,
           reason: validation.error?.code ?? "unknown",
           message: errorMessage,
-          mimeType: file.type ?? "",
-          name: file.name ?? null,
-          sizeBytes: file.size ?? null,
+          mimeType: normalizedFile.type ?? "",
+          name: normalizedFile.name ?? null,
+          sizeBytes: normalizedFile.size ?? null,
           source,
         });
-        toast.error("Arquivo inválido", { description: errorMessage });
+        toast.error("Arquivo invalido", { description: errorMessage });
         return false;
       }
 
       const metadata = validation.metadata ?? null;
+      releaseAudioSource();
+      const objectUrl = URL.createObjectURL(normalizedFile);
+      audioUrlRef.current = objectUrl;
+      setCurrentAudioSource({
+        origin: source,
+        file: normalizedFile,
+        url: objectUrl,
+        metadata,
+      });
+
       setValidationMessage(null);
-      setSelectedFile(file);
+      setSelectedFile(normalizedFile);
       setFileMetadata(metadata);
       const newTraceId = crypto.randomUUID();
       setTraceId(newTraceId);
       Observability.trackEvent("audio_transcription_file_ready", {
         traceId: newTraceId,
-        mimeType: metadata?.mimeType || file.type || "",
+        mimeType: metadata?.mimeType || normalizedFile.type || "",
         extension: metadata?.extension,
-        sizeMB: metadata?.sizeMB ?? file.size / (1024 * 1024),
+        sizeMB: metadata?.sizeMB ?? normalizedFile.size / (1024 * 1024),
         source,
       });
 
       if (source === "recording") {
-        toast.success("Gravação pronta", {
-          description: "Áudio capturado. Revise e clique em Transcrever para continuar.",
+        toast.success("Gravacao pronta", {
+          description: "Audio capturado. Revise e clique em Transcrever para continuar.",
         });
       }
 
       return true;
     },
-    [validateAudio],
+    [clearAudioSelection, releaseAudioSource, validateAudio],
   );
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -259,22 +322,23 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
     [handleAudioFileSelection],
   );
 
+  const handleRemoveAudio = useCallback(() => {
+    clearAudioSelection();
+    setTraceId(null);
+    toast.info("Audio removido");
+  }, [clearAudioSelection]);
+
   const handleChangeInputMode = useCallback(
     (mode: "upload" | "record") => {
       setInputMode((current) => {
         if (current === mode) {
           return current;
         }
-        setSelectedFile(null);
-        setFileMetadata(null);
-        setValidationMessage(null);
-        if (fileInputRef.current) {
-          fileInputRef.current.value = "";
-        }
+        clearAudioSelection();
         return mode;
       });
     },
-    [],
+    [clearAudioSelection],
   );
 
   useEffect(() => {
@@ -336,8 +400,8 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
   ]);
 
   const handleTranscribe = async () => {
-    if (!selectedFile) {
-      toast.error("Selecione um arquivo de áudio");
+    if (!selectedFile || !currentAudioSource) {
+      toast.error("Salve a gravação ou selecione um arquivo de áudio antes de transcrever.");
       return;
     }
 
@@ -491,12 +555,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         success: true,
       });
 
-      setSelectedFile(null);
-      setFileMetadata(null);
-      setValidationMessage(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      clearAudioSelection();
     } catch (rawError: unknown) {
       const error = normalizeError(rawError);
       toast.error("Erro ao processar", {
@@ -563,18 +622,27 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       if (!result?.transcriptionId) return;
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
+      const edgeToken = import.meta.env.VITE_SUPABASE_EDGE_TOKEN;
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(edgeToken ? { 'x-edge-token': edgeToken } : {}),
+      };
       const resp = await fetch(`${SUPABASE_URL}/functions/v1/whisper_processor`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-        },
+        headers,
         body: JSON.stringify({ transcriptionId: result.transcriptionId }),
       });
       const raw = await resp.text();
       if (!resp.ok) {
-        toast.error("Falha ao acionar processamento", { description: raw || `HTTP ${resp.status}` });
+        if (resp.status === 401) {
+          toast.error("Falha ao acionar processamento", {
+            description: "Token de execução inválido. Verifique a variável VITE_SUPABASE_EDGE_TOKEN.",
+          });
+        } else {
+          toast.error("Falha ao acionar processamento", { description: raw || `HTTP ${resp.status}` });
+        }
         return;
       }
       toast.success("Processamento acionado", { description: "Vamos rechecar o status." });
@@ -619,6 +687,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
               <AudioRecorder
                 onRecordingComplete={handleRecordingComplete}
                 disabled={isUploading || isTranscribing || isJobRunningDisplay}
+                hasPendingAudio={Boolean(currentAudioSource)}
               />
             </div>
           ) : (
@@ -650,6 +719,20 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
               />
             </div>
           )}
+
+          {currentAudioSource ? (
+            <AudioPreviewCard
+              title={currentAudioSource.origin === "upload" ? "Arquivo importado" : "Gravacao selecionada"}
+              description="Revise o audio antes de iniciar a transcricao."
+              fileName={currentAudioSource.file.name}
+              fileSizeLabel={formatBytes(currentAudioSource.file.size)}
+              sourceLabel={currentAudioSource.origin === "upload" ? "Upload" : "Gravacao"}
+              url={currentAudioSource.url}
+              onRemove={handleRemoveAudio}
+              downloadFileName={currentAudioSource.file.name}
+              downloadLabel="Baixar"
+            />
+          ) : null}
 
           <TransformationPanel
             applyTransformation={applyTransformation}

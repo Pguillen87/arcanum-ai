@@ -6,7 +6,8 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  // permitir o header x-edge-token para reprocessamento via front-end
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-edge-token",
 };
 
 const url = Deno.env.get("PROJECT_URL");
@@ -55,18 +56,29 @@ async function transcribeWithOpenAI(blob: Blob, filename: string, mimeType?: str
 }
 
 async function convertToWav(blob: Blob, sourceMime: string): Promise<Blob> {
-  if (!sourceMime.includes("webm") && !sourceMime.includes("ogg")) {
+  const supportedConversions: Array<{ match: string; extension: string }> = [
+    { match: "webm", extension: "webm" },
+    { match: "ogg", extension: "ogg" },
+    { match: "mp4", extension: "mp4" },
+    { match: "m4a", extension: "m4a" },
+    { match: "m4b", extension: "m4b" },
+    { match: "quicktime", extension: "mov" },
+  ];
+
+  const normalizedMime = sourceMime.toLowerCase();
+  const match = supportedConversions.find((candidate) => normalizedMime.includes(candidate.match));
+  if (!match) {
     return blob;
   }
 
   const tmpDir = await Deno.makeTempDir({ prefix: "whisper_" });
-  const inputPath = `${tmpDir}/input.${sourceMime.includes("ogg") ? "ogg" : "webm"}`;
+  const inputPath = `${tmpDir}/input.${match.extension}`;
   const outputPath = `${tmpDir}/output.wav`;
   const inputBuffer = await blob.arrayBuffer();
   await Deno.writeFile(inputPath, new Uint8Array(inputBuffer));
 
   const process = Deno.run({
-    cmd: [FFmpegPath, "-i", inputPath, "-ar", "16000", "-ac", "1", outputPath],
+    cmd: [FFmpegPath, "-i", inputPath, "-vn", "-ar", "16000", "-ac", "1", "-y", outputPath],
     stdout: "piped",
     stderr: "piped",
   });
@@ -77,7 +89,7 @@ async function convertToWav(blob: Blob, sourceMime: string): Promise<Blob> {
     await Deno.remove(inputPath).catch(() => {});
     await Deno.remove(outputPath).catch(() => {});
     await Deno.remove(tmpDir, { recursive: true }).catch(() => {});
-    throw new Error(`Falha ao converter audio para wav: ${errorOutput}`);
+    throw new Error(`Falha ao converter audio para wav (${sourceMime}): ${errorOutput}`);
   }
   process.close();
 
@@ -185,10 +197,15 @@ serve(async (req: Request): Promise<Response> => {
       "audio/wav",
       "audio/x-wav",
       "audio/m4a",
+      "audio/x-m4a",
+      "audio/m4b",
+      "audio/x-m4b",
       "audio/mp4",
       "audio/ogg",
       "audio/webm",
       "audio/flac",
+      "video/mp4",
+      "video/quicktime",
     ];
     if (asset.mimetype && !supportedMimeTypes.includes(asset.mimetype)) {
       await admin
@@ -240,7 +257,8 @@ serve(async (req: Request): Promise<Response> => {
 
     let text: string;
     try {
-      text = await transcribeWithOpenAI(blob, filename, blob.type || asset.mimetype ?? undefined, transcription.language ?? "pt");
+      const effectiveMime = blob.type ? blob.type : asset.mimetype ?? undefined;
+      text = await transcribeWithOpenAI(blob, filename, effectiveMime, transcription.language ?? "pt");
     } catch (openAiError) {
       const humanMessage = openAiError instanceof Error ? openAiError.message : String(openAiError);
       console.error("[whisper_processor] OpenAI falhou", {

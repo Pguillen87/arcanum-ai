@@ -155,33 +155,15 @@ Riscos e mitigação
 - Inconsistência de dados: transação/locks leves; histórico criado somente após `completed`.
 - Segurança/RLS: validar Bearer em cada operação e aplicar políticas de linha.
 
-Checklist de tarefas (alto nível) — Progresso
-- [x] Fase 0: Pré-requisitos (parcial)
-  - [x] Supabase CLI login
-  - [x] Link ao projeto (`giozhrukzcqoopssegby`)
-  - [x] Migration repair (histórico alinhado)
-  - [ ] `db push` definitivo (timeout no pooler; reexecutar quando o serviço estiver estável)
-  - [ ] Variáveis de ambiente mapeadas (OPENAI_API_KEY) — precisa configurar via `supabase secrets set`
-- [x] Fase 1: Worker Whisper (MVP)
-  - [x] Edge Function `supabase/functions/whisper_processor/index.ts` criada
-  - [ ] Testes de integração no ambiente (dependem de OPENAI_API_KEY)
-- [ ] Fase 2: Contrato e segurança
-  - [x] Acionamento automático do worker após `transcribe_audio` (best-effort)
-  - [x] Proteção simples do worker com token via cabeçalho `x-edge-token`
-  - [ ] Documentar status/consulta (PostgREST RLS confirmada)
-- [ ] Fase 3: Frontend
-  - [x] Polling integrado (useTranscriptionStatus) e dois cards (Original Markdown + Personagem com Refresh)
-  - [x] Transformação automática quando “aplicar personagem” estiver marcado (hook já dispara ao `completed`)
-  - [ ] Confirmar criação de histórico automática ao `completed` (via worker) em ambiente com OPENAI_API_KEY
-- [ ] Fase 4: UX
-  - [ ] Scrollbar discreta padronizada e tooltip acessível (hover/focus)
-- [ ] Fase 5: Observabilidade
-  - [ ] Métrica de latência queued→completed consolidada
-- [ ] Fase 6: Testes
-  - [ ] Unitários/integrados/e2e/carga cobrindo fluxos principais e falhas
-- [ ] Fase 7: Deploy/flag/rollback
-  - [x] Deploy das funções: `transcribe_audio` e `whisper_processor`
-  - [ ] Flag de rollout, smoke tests e plano de rollback
+Checklist de tarefas (alto nível)
+1) Pré-requisitos: Supabase CLI login, link ao projeto, variáveis de ambiente mapeadas.
+2) Worker Whisper: consumo de jobs, execução, persistência de `text/status`, logs.
+3) Contrato e segurança: resposta padronizada, RLS, endpoint/consulta de status.
+4) Frontend: polling integrado, criação de histórico, UI dos dois cards, Refresh.
+5) UX: scrollbar discreta, tooltip/hint, microtextos.
+6) Observabilidade: eventos e métricas.
+7) Testes: unitários/integrados/e2e/carga.
+8) Deploy/flag/rollback.
 
 Critérios de aceite finais (End-to-End)
 - Ao subir um `.mp3/.wav/.m4a` válido, o botão habilita, o job é criado e processado pelo worker.
@@ -192,9 +174,13 @@ Critérios de aceite finais (End-to-End)
 - Tooltip explica claramente por que o botão está desabilitado, quando aplicável.
 - Logs e métricas mostram sucesso/falha e latência dentro de faixas aceitáveis.
 
-Status atual
-- Backend implantado (Edge Functions) e contrato assíncrono ajustado (acionamento automático do worker).
-- Segredos principais presentes no Dashboard (PROJECT_URL, SERVICE_ROLE_KEY, OPENAI_API_KEY). WORKER_TOKEN opcional a critério de segurança.
-- UI com dois cards e polling pronta. Faltam smoke tests com um arquivo real e configuração do WORKER_TOKEN (se desejar).
+Perguntas de esclarecimento antes de executar (favor responder)
+1) Whisper será via OpenAI API (paid) ou implantação local? Há preferência/cotas/custos definidos?
+2) Qual o project-ref definitivo do Supabase para linkar a CLI (confirmar o atual: giozhrukzcqoopssegby)?
+3) Há necessidade de retorno síncrono (texto na resposta) para arquivos pequenos, ou seguimos apenas o modelo de polling?
+4) A transformação com personagem deve ser automática após `completed` quando “aplicar personagem” estiver marcado, ou sempre manual via Refresh?
+5) Limite de tamanho: fechamos em 200 MB para MVP, ou desejam outro valor?
+6) Há requisitos de logs/observabilidade específicos (ferramenta/painel) além do console e Supabase Dashboard?
 
 Após sua aprovação e respostas, sigo para a execução faseada conforme acima.
+
