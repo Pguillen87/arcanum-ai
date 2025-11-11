@@ -255,27 +255,62 @@ export const transcriptionService: TranscriptionService = {
     try {
       const session = await supabase.auth.getSession();
       if (!session.data.session) {
-        return { data: null, error: { message: 'Não autenticado' } };
+        return { data: null, error: { message: 'Nǜo autenticado' } };
       }
 
       // Validar com Zod
       const validated = CreateTranscriptionHistorySchema.parse(history);
 
-      const { data, error } = await supabase
-        .from('transcription_history')
-        .insert({
-          ...validated,
-          user_id: session.data.session.user.id,
-        })
-        .select()
-        .single();
+      // Primeiro tentamos inserir e retornar a linha (select), mas isso pode falhar se o PostgREST/schema cache estiver desatualizado
+      try {
+        const { data, error } = await supabase
+          .from('transcription_history')
+          .insert({
+            ...validated,
+            user_id: session.data.session.user.id,
+          })
+          .select()
+          .single();
 
-      if (error) {
-        Observability.trackError(error);
-        return { data: null, error };
+        if (error) {
+          // Se for erro relacionado ao schema cache (coluna faltando), tentar fallback sem .select()
+          const isSchemaCacheError = error.message?.includes("Could not find the 'original_text' column") || error.message?.includes('column "original_text" does not exist') || error.status === 400;
+          if (isSchemaCacheError) {
+            console.warn('transcriptionService.createHistory: schema cache error detected, retrying insert without select', error.message);
+            const { error: insertError } = await supabase
+              .from('transcription_history')
+              .insert({
+                ...validated,
+                user_id: session.data.session.user.id,
+              });
+            if (insertError) {
+              Observability.trackError(insertError);
+              return { data: null, error: insertError };
+            }
+            // Sucesso no insert sem retorno da linha
+            return { data: null, error: null };
+          }
+
+          Observability.trackError(error);
+          return { data: null, error };
+        }
+
+        return { data: data as TranscriptionHistory, error: null };
+      } catch (innerErr: any) {
+        Observability.trackError(innerErr);
+        // Tentar fallback mais simples
+        const { error: insertError } = await supabase
+          .from('transcription_history')
+          .insert({
+            ...validated,
+            user_id: session.data.session.user.id,
+          });
+        if (insertError) {
+          Observability.trackError(insertError);
+          return { data: null, error: insertError };
+        }
+        return { data: null, error: null };
       }
-
-      return { data: data as TranscriptionHistory, error: null };
     } catch (error: any) {
       Observability.trackError(error);
       return { data: null, error };
