@@ -185,12 +185,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
   useEffect(() => {
     if (!liveTranscription) return;
 
-    console.debug("[AudioTranscribeTab] liveTranscription polled", {
-      transcriptionId: liveTranscription.id ?? result?.transcriptionId ?? null,
-      status: liveTranscription.status,
-      hasText: Boolean(liveTranscription.text),
-      error: liveTranscription.error,
-    });
+    // liveTranscription polled (debug logs removed in prod)
 
     setResult((previous) => {
       const baseLanguage = previous?.language ?? lastRequestedLanguage.current ?? language;
@@ -579,8 +574,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
                         .single();
                       if (!pollError && polled) {
                         finalStatus = polled.status ?? null;
-                        console.debug('[AudioTranscribeTab] directPoll', { transcriptionId: responseData.transcriptionId, status: finalStatus, hasText: Boolean(polled.text) });
-                        // update local state immediately
+                        // directPoll result
                         setResult((prev) => ({
                           transcriptionId: polled.id,
                           text: polled.text ?? prev?.text ?? '',
@@ -681,12 +675,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         .eq("id", result.transcriptionId)
         .single();
       if (error) throw error;
-      console.debug("[AudioTranscribeTab] checkTranscriptionStatus", {
-        transcriptionId: result.transcriptionId,
-        status: data.status,
-        hasText: Boolean(data.text),
-        error: data.error,
-      });
+      // checkTranscriptionStatus result
       setResult((prev) => ({
         transcriptionId: data.id,
         text: typeof data.text === "string" ? data.text : prev?.text ?? "",
@@ -703,7 +692,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       return { status: data.status ?? null };
     } catch (rawError: unknown) {
       const error = normalizeError(rawError);
-      console.error("[AudioTranscribeTab] checkTranscriptionStatus error", error);
+      // suppressed detailed error log to keep console clean; still show toast
       toast.error("Falha ao checar status", { description: error.message ?? "Tente novamente." });
       return null;
     }

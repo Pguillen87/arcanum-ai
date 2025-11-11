@@ -114,11 +114,7 @@ export function AudioRecorder({
     const blob = new Blob(chunksRef.current, {
       type: selectedMimeRef.current?.mime ?? "audio/webm",
     });
-    console.debug("[AudioRecorder] blob capturado", {
-      chunkCount,
-      sizeBytes: blob.size,
-      type: blob.type,
-    });
+    // blob captured
     chunksRef.current = [];
 
     if (blob.size === 0) {
@@ -137,11 +133,7 @@ export function AudioRecorder({
     const fileName = `gravacao-arcanum-${timestamp}.${extension}`;
     const fileType = selectedMimeRef.current?.mime ?? "audio/webm";
     const file = new File([blob], fileName, { type: fileType });
-    console.debug("[AudioRecorder] arquivo gerado", {
-      name: file.name,
-      sizeBytes: file.size,
-      type: file.type,
-    });
+    // arquivo gerado
     revokeRecordedUrl();
     const objectUrl = URL.createObjectURL(file);
     setRecordedUrl(objectUrl);
