@@ -107,9 +107,25 @@ serve(async (req: Request): Promise<Response> => {
   }
 
   try {
-    // Autorização simples via token (se configurado)
+    const requestId = crypto.randomUUID();
+    const startedAt = Date.now();
     const edgeToken = req.headers.get("x-edge-token");
+    const authHeader = req.headers.get("authorization");
+
+    console.log("[whisper_processor] request_received", {
+      requestId,
+      method: req.method,
+      edgeTokenPresent: Boolean(edgeToken),
+      authHeaderPresent: Boolean(authHeader),
+      url: req.url,
+    });
+
+    // Autorização simples via token (se configurado)
     if (WORKER_TOKEN && edgeToken !== WORKER_TOKEN) {
+      console.warn("[whisper_processor] invalid_token", {
+        requestId,
+        reason: edgeToken ? "mismatch" : "missing",
+      });
       return new Response(JSON.stringify({ code: "AUTH_401", message: "Token de execução inválido" }), {
         status: 401,
         headers: { "content-type": "application/json", ...corsHeaders },
@@ -125,6 +141,11 @@ serve(async (req: Request): Promise<Response> => {
 
     const body = (await req.json()) as ProcessBody;
     const { transcriptionId: tid, jobId } = body || {};
+    console.log("[whisper_processor] payload_parsed", {
+      requestId,
+      transcriptionId: tid ?? null,
+      jobId: jobId ?? null,
+    });
 
     if (!tid && !jobId) {
       return new Response(JSON.stringify({ code: "VAL_400", message: "Informe transcriptionId ou jobId" }), {
@@ -146,6 +167,13 @@ serve(async (req: Request): Promise<Response> => {
         headers: { "content-type": "application/json", ...corsHeaders },
       });
     }
+    console.log("[whisper_processor] transcription_loaded", {
+      requestId,
+      transcriptionId: transcription.id,
+      jobId: jobId ?? null,
+      status: transcription.status,
+      assetId: transcription.asset_id,
+    });
 
     if (transcription.status === "completed") {
       return new Response(JSON.stringify({ status: "completed", transcriptionId: transcription.id }), {
@@ -172,11 +200,24 @@ serve(async (req: Request): Promise<Response> => {
         .from("transcriptions")
         .update({ status: "failed", error: assetError?.message ?? "Asset não encontrado" })
         .eq("id", transcription.id);
+      console.error("[whisper_processor] asset_not_found", {
+        requestId,
+        transcriptionId: transcription.id,
+        reason: assetError?.message ?? "not_found",
+      });
       return new Response(JSON.stringify({ code: "BUS_404", message: "Asset não encontrado" }), {
         status: 404,
         headers: { "content-type": "application/json", ...corsHeaders },
       });
     }
+    console.log("[whisper_processor] asset_loaded", {
+      requestId,
+      transcriptionId: transcription.id,
+      assetId: asset.id,
+      mimetype: asset.mimetype,
+      type: asset.type,
+      storagePath: asset.storage_path,
+    });
 
     if (asset.type !== "audio") {
       // MVP: processar apenas áudio
@@ -190,7 +231,16 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    // Validação de mimetype suportado para evitar erros 500 da OpenAI
+    const filename = asset.storage_path.split("/").pop() || "audio";
+    let blob = await downloadAsset("audio", asset.storage_path);
+    console.log("[whisper_processor] asset baixado", {
+      transcriptionId: transcription.id,
+      assetId: asset.id,
+      sizeBytes: blob.size,
+      blobType: blob.type,
+      mimetype: asset.mimetype,
+    });
+
     const supportedMimeTypes = [
       "audio/mpeg",
       "audio/mp3",
@@ -207,7 +257,43 @@ serve(async (req: Request): Promise<Response> => {
       "video/mp4",
       "video/quicktime",
     ];
-    if (asset.mimetype && !supportedMimeTypes.includes(asset.mimetype)) {
+
+    const extension = filename.split(".").pop()?.toLowerCase() ?? "";
+    const extensionMap: Record<string, string> = {
+      mp3: "audio/mpeg",
+      wav: "audio/wav",
+      webm: "audio/webm",
+      ogg: "audio/ogg",
+      m4a: "audio/m4a",
+      m4b: "audio/m4b",
+      mp4: "audio/mp4",
+      mov: "video/quicktime",
+      flac: "audio/flac",
+    };
+
+    let effectiveMime = asset.mimetype ?? "";
+    if ((!effectiveMime || effectiveMime === "application/octet-stream") && blob.type) {
+      effectiveMime = blob.type;
+    }
+    if (!effectiveMime && extension && extensionMap[extension]) {
+      effectiveMime = extensionMap[extension];
+    }
+
+    // normalize and strip parameters (e.g. "audio/webm;codecs=opus" -> "audio/webm")
+    const normalizedMime = (effectiveMime || "").split(";")[0].trim().toLowerCase();
+
+    if (!normalizedMime) {
+      console.warn("[whisper_processor] mime_detection_failed", {
+        requestId,
+        transcriptionId: transcription.id,
+        assetId: asset.id,
+        extension,
+        blobType: blob.type,
+        rawMime: effectiveMime,
+      });
+    }
+
+    if (!normalizedMime || !supportedMimeTypes.includes(normalizedMime)) {
       await admin
         .from("transcriptions")
         .update({ status: "failed", error: "Formato de áudio não suportado" })
@@ -218,19 +304,22 @@ serve(async (req: Request): Promise<Response> => {
       });
     }
 
-    const filename = asset.storage_path.split("/").pop() || "audio";
-    let blob = await downloadAsset("audio", asset.storage_path);
-    console.log("[whisper_processor] asset baixado", {
-      transcriptionId: transcription.id,
-      assetId: asset.id,
-      sizeBytes: blob.size,
-      blobType: blob.type,
-      mimetype: asset.mimetype,
-    });
+    if (!asset.mimetype || asset.mimetype !== normalizedMime) {
+      console.log("[whisper_processor] updating_asset_mimetype", {
+        requestId,
+        assetId: asset.id,
+        previous: asset.mimetype ?? null,
+        detected: normalizedMime,
+      });
+      await admin
+        .from("assets")
+        .update({ mimetype: normalizedMime })
+        .eq("id", asset.id);
+    }
 
-    if (asset.mimetype && (asset.mimetype.includes("webm") || asset.mimetype.includes("ogg"))) {
+    if (normalizedMime.includes("webm") || normalizedMime.includes("ogg")) {
       try {
-        blob = await convertToWav(blob, asset.mimetype);
+        blob = await convertToWav(blob, normalizedMime);
         console.log("[whisper_processor] asset convertido para wav", {
           transcriptionId: transcription.id,
           assetId: asset.id,
@@ -257,8 +346,8 @@ serve(async (req: Request): Promise<Response> => {
 
     let text: string;
     try {
-      const effectiveMime = blob.type ? blob.type : asset.mimetype ?? undefined;
-      text = await transcribeWithOpenAI(blob, filename, effectiveMime, transcription.language ?? "pt");
+      const mimeForTranscription = blob.type ? blob.type : normalizedMime ?? undefined;
+      text = await transcribeWithOpenAI(blob, filename, mimeForTranscription, transcription.language ?? "pt");
     } catch (openAiError) {
       const humanMessage = openAiError instanceof Error ? openAiError.message : String(openAiError);
       console.error("[whisper_processor] OpenAI falhou", {
@@ -309,6 +398,13 @@ serve(async (req: Request): Promise<Response> => {
       // não falhar a resposta, mas registrar
       console.warn("Falha ao inserir transcription_history:", histError.message);
     }
+
+    console.log("[whisper_processor] transcription_completed", {
+      requestId,
+      transcriptionId: transcription.id,
+      durationMs: Date.now() - startedAt,
+      textLength: text.length,
+    });
 
     return new Response(
       JSON.stringify({ transcriptionId: transcription.id, status: "completed", text }),
