@@ -525,6 +525,27 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
 
       if (responseData) {
         setResult(responseData);
+
+        // Tentar acionar o worker imediatamente para reduzir latência do queued -> processing
+        (async () => {
+          try {
+            const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+            const edgeToken = import.meta.env.VITE_SUPABASE_EDGE_TOKEN;
+            if (SUPABASE_URL && edgeToken) {
+              await fetch(`${SUPABASE_URL}/functions/v1/whisper_processor`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'x-edge-token': edgeToken,
+                },
+                body: JSON.stringify({ transcriptionId: responseData.transcriptionId }),
+              });
+            }
+          } catch (e) {
+            // não bloquear o fluxo principal, apenas logar
+            console.warn('[AudioTranscribeTab] could not trigger whisper_processor immediately', e);
+          }
+        })();
       }
 
       const hasImmediateText = Boolean(responseData?.text);
