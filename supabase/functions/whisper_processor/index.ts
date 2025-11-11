@@ -318,29 +318,40 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     if (normalizedMime.includes("webm") || normalizedMime.includes("ogg")) {
-      try {
-        blob = await convertToWav(blob, normalizedMime);
-        console.log("[whisper_processor] asset convertido para wav", {
+      // Some Edge runtimes don't support Deno.run (no ffmpeg). Detect and fallback.
+      if (typeof (globalThis as unknown as Record<string, unknown>).Deno === "object" && typeof (globalThis as unknown as Record<string, unknown>).Deno!.run === "function") {
+        try {
+          blob = await convertToWav(blob, normalizedMime);
+          console.log("[whisper_processor] asset convertido para wav", {
+            transcriptionId: transcription.id,
+            assetId: asset.id,
+            sizeBytes: blob.size,
+            blobType: blob.type,
+          });
+        } catch (conversionError) {
+          const message = conversionError instanceof Error ? conversionError.message : String(conversionError);
+          console.error("[whisper_processor] erro na conversão", {
+            transcriptionId: transcription.id,
+            assetId: asset.id,
+            message,
+          });
+          await admin
+            .from("transcriptions")
+            .update({ status: "failed", error: message })
+            .eq("id", transcription.id);
+          return new Response(
+            JSON.stringify({ code: "CONVERSION_ERROR", message }),
+            { status: 422, headers: { "content-type": "application/json", ...corsHeaders } },
+          );
+        }
+      } else {
+        // Fallback: runtime cannot spawn ffmpeg. Try sending the original blob to OpenAI (they accept webm/ogg).
+        console.warn("[whisper_processor] conversion_skipped_no_deno_run", {
+          requestId,
           transcriptionId: transcription.id,
           assetId: asset.id,
-          sizeBytes: blob.size,
-          blobType: blob.type,
+          detectedMime: normalizedMime,
         });
-      } catch (conversionError) {
-        const message = conversionError instanceof Error ? conversionError.message : String(conversionError);
-        console.error("[whisper_processor] erro na conversão", {
-          transcriptionId: transcription.id,
-          assetId: asset.id,
-          message,
-        });
-        await admin
-          .from("transcriptions")
-          .update({ status: "failed", error: message })
-          .eq("id", transcription.id);
-        return new Response(
-          JSON.stringify({ code: "CONVERSION_ERROR", message }),
-          { status: 422, headers: { "content-type": "application/json", ...corsHeaders } },
-        );
       }
     }
 
