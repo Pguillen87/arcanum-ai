@@ -3,6 +3,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranscription, useTranscriptionStatus } from "@/hooks/useTranscription";
+import { useQueryClient } from '@tanstack/react-query';
 import { useCharacters } from "@/hooks/useCharacters";
 import { toast } from "sonner";
 import { CosmicCard } from "@/components/cosmic/CosmicCard";
@@ -75,6 +76,7 @@ function normalizeAudioFile(file: File): File {
 
 export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
   const { transcribeAudio, transformTranscription, isTranscribing, isTransforming, history } = useTranscription();
+  const queryClient = useQueryClient();
   const { characters, defaultCharacter } = useCharacters();
   const { validateAudio, acceptedExtensions, maxSizeMB } = useAudioValidation();
 
@@ -562,18 +564,42 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
                 console.log("[AudioTranscribeTab] whisper_processor trigger dispatched", {
                   transcriptionId: responseData.transcriptionId,
                 });
-                // Tenta revalidar o status algumas vezes para reduzir janela em queued
+                // Poll DB directly (up to 15s) to catch the update as soon as worker finishes
                 (async () => {
-                  const firstAttempt = await checkTranscriptionStatus();
-                  let currentStatus = firstAttempt?.status ?? null;
-                  for (let attempt = 1; attempt <= 3; attempt += 1) {
-                    if (currentStatus === "completed" || currentStatus === "failed") {
-                      break;
+                  const pollIntervalMs = 1000;
+                  const timeoutMs = 15000; // 15s
+                  const start = Date.now();
+                  let finalStatus: string | null = null;
+                  while (Date.now() - start < timeoutMs) {
+                    try {
+                      const { data: polled, error: pollError } = await supabase
+                        .from('transcriptions')
+                        .select('id, text, status, error')
+                        .eq('id', responseData.transcriptionId)
+                        .single();
+                      if (!pollError && polled) {
+                        finalStatus = polled.status ?? null;
+                        console.debug('[AudioTranscribeTab] directPoll', { transcriptionId: responseData.transcriptionId, status: finalStatus, hasText: Boolean(polled.text) });
+                        // update local state immediately
+                        setResult((prev) => ({
+                          transcriptionId: polled.id,
+                          text: polled.text ?? prev?.text ?? '',
+                          language: prev?.language ?? language,
+                          duration: prev?.duration,
+                          status: polled.status ?? prev?.status ?? 'processing',
+                          error: polled.error ?? prev?.error ?? null,
+                        }));
+                        if (finalStatus === 'completed' || finalStatus === 'failed') {
+                          break;
+                        }
+                      }
+                    } catch (e) {
+                      console.warn('[AudioTranscribeTab] direct poll error', e);
                     }
-                    await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
-                    const retryResult = await checkTranscriptionStatus();
-                    currentStatus = retryResult?.status ?? currentStatus;
+                    await new Promise((r) => setTimeout(r, pollIntervalMs));
                   }
+                  // ensure react-query cache invalidation so hooks refresh
+                  queryClient.invalidateQueries({ queryKey: ['transcription', responseData.transcriptionId] });
                 })();
               }
             }
