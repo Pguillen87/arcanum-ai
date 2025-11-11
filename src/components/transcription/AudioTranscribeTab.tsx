@@ -532,14 +532,45 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
             const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
             const edgeToken = import.meta.env.VITE_SUPABASE_EDGE_TOKEN;
             if (SUPABASE_URL && edgeToken) {
-              await fetch(`${SUPABASE_URL}/functions/v1/whisper_processor`, {
+              const session = await supabase.auth.getSession();
+              const bearer = session.data.session?.access_token;
+              const headers: Record<string, string> = {
+                "Content-Type": "application/json",
+                ...(edgeToken ? { "x-edge-token": edgeToken } : {}),
+                ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+              };
+              const triggerResponse = await fetch(`${SUPABASE_URL}/functions/v1/whisper_processor`, {
                 method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'x-edge-token': edgeToken,
-                },
+                headers,
                 body: JSON.stringify({ transcriptionId: responseData.transcriptionId }),
               });
+              if (!triggerResponse.ok) {
+                const raw = await triggerResponse.text();
+                console.warn("[AudioTranscribeTab] whisper_processor trigger failed", {
+                  transcriptionId: responseData.transcriptionId,
+                  status: triggerResponse.status,
+                  body: raw,
+                });
+              } else {
+                console.log("[AudioTranscribeTab] whisper_processor trigger dispatched", {
+                  transcriptionId: responseData.transcriptionId,
+                });
+                // Tenta revalidar o status algumas vezes para reduzir janela em queued
+                (async () => {
+                  try {
+                    await checkTranscriptionStatus();
+                    // se ainda não estiver completed, tentar 3 vezes com backoff
+                    for (let attempt = 1; attempt <= 3; attempt += 1) {
+                      const currentStatus = (result?.status) ?? null;
+                      if (currentStatus === "completed") break;
+                      await new Promise((res) => setTimeout(res, attempt * 1000));
+                      await checkTranscriptionStatus();
+                    }
+                  } catch (e) {
+                    console.warn("[AudioTranscribeTab] retry checkTranscriptionStatus failed", e);
+                  }
+                })();
+              }
             }
           } catch (e) {
             // não bloquear o fluxo principal, apenas logar
