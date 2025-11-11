@@ -557,17 +557,15 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
                 });
                 // Tenta revalidar o status algumas vezes para reduzir janela em queued
                 (async () => {
-                  try {
-                    await checkTranscriptionStatus();
-                    // se ainda não estiver completed, tentar 3 vezes com backoff
-                    for (let attempt = 1; attempt <= 3; attempt += 1) {
-                      const currentStatus = (result?.status) ?? null;
-                      if (currentStatus === "completed") break;
-                      await new Promise((res) => setTimeout(res, attempt * 1000));
-                      await checkTranscriptionStatus();
+                  const firstAttempt = await checkTranscriptionStatus();
+                  let currentStatus = firstAttempt?.status ?? null;
+                  for (let attempt = 1; attempt <= 3; attempt += 1) {
+                    if (currentStatus === "completed" || currentStatus === "failed") {
+                      break;
                     }
-                  } catch (e) {
-                    console.warn("[AudioTranscribeTab] retry checkTranscriptionStatus failed", e);
+                    await new Promise((resolve) => setTimeout(resolve, attempt * 1000));
+                    const retryResult = await checkTranscriptionStatus();
+                    currentStatus = retryResult?.status ?? currentStatus;
                   }
                 })();
               }
@@ -641,31 +639,33 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
     return () => window.clearTimeout(id);
   }, [isProcessing, processingStartTs]);
 
-  const checkTranscriptionStatus = async () => {
+  const checkTranscriptionStatus = async (): Promise<{ status: string | null } | null> => {
     try {
-      if (!result?.transcriptionId) return;
+      if (!result?.transcriptionId) return null;
       const { data, error } = await supabase
-        .from('transcriptions')
-        .select('*')
-        .eq('id', result.transcriptionId)
+        .from("transcriptions")
+        .select("id, text, status, language, error")
+        .eq("id", result.transcriptionId)
         .single();
       if (error) throw error;
       setResult((prev) => ({
         transcriptionId: data.id,
-        text: data.text ?? prev?.text ?? "",
+        text: typeof data.text === "string" ? data.text : prev?.text ?? "",
         language: data.language ?? prev?.language ?? "pt",
         duration: prev?.duration,
         status: data.status ?? prev?.status ?? "processing",
-        error: data.error ?? prev?.error ?? null,
+        error: typeof data.error === "string" ? data.error : prev?.error ?? null,
       }));
-      if (data.status === 'completed') {
+      if (data.status === "completed") {
         setIsProcessing(false);
         setOverlayProgress(100);
         setIsStalled(false);
       }
+      return { status: data.status ?? null };
     } catch (rawError: unknown) {
       const error = normalizeError(rawError);
       toast.error("Falha ao checar status", { description: error.message ?? "Tente novamente." });
+      return null;
     }
   };
 
