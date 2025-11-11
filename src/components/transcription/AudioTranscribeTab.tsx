@@ -1,7 +1,7 @@
 // src/components/transcription/AudioTranscribeTab.tsx
 // Componente para upload e transcrição de áudio com integração de characters
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranscription, useTranscriptionStatus } from "@/hooks/useTranscription";
 import { useCharacters } from "@/hooks/useCharacters";
 import { toast } from "sonner";
@@ -21,7 +21,9 @@ import { MysticRecipeTicker } from "./MysticRecipeTicker";
 import { Copy, Loader2, Sparkles } from "lucide-react";
 import { RuneBorder } from "@/components/ui/mystical";
 import { getTranscribeDisabledReason } from "./getTranscribeDisabledReason";
+import { AudioRecorder } from "./AudioRecorder";
 import { supabase } from "@/integrations/supabase/client";
+import { normalizeError } from "@/utils/error";
 
 interface AudioTranscribeTabProps {
   projectId?: string;
@@ -43,6 +45,11 @@ function pickMessage(messages: string[]): string {
   return messages[Math.floor(Math.random() * messages.length)] ?? messages[0];
 }
 
+interface ExtendedTranscriptionResult extends TranscriptionResult {
+  assetId?: string;
+  traceId?: string;
+}
+
 export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
   const { transcribeAudio, transformTranscription, isTranscribing, isTransforming, history } = useTranscription();
   const { characters, defaultCharacter } = useCharacters();
@@ -62,10 +69,14 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStage, setProcessingStage] = useState<"upload" | "transcribe">("upload");
   const [processingOverlayMessage, setProcessingOverlayMessage] = useState(UPLOAD_MESSAGES[0]);
-  const [result, setResult] = useState<TranscriptionResult | null>(null);
+  const [result, setResult] = useState<ExtendedTranscriptionResult | null>(null);
   const [transformedText, setTransformedText] = useState<string | null>(null);
   const [isTransformationPending, setIsTransformationPending] = useState(false);
   const [viewMarkdown, setViewMarkdown] = useState(true);
+  const [inputMode, setInputMode] = useState<"upload" | "record">("record");
+  const [isNewExperienceEnabled] = useState(
+    (import.meta.env.VITE_FEATURE_AUDIO_TRANSCRIPTION_V2 ?? "true") !== "false",
+  );
   const lastRequestedLanguage = useRef(language);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,7 +107,6 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
   const hasTranscriptionText = Boolean(((result?.text ?? liveTranscription?.text) || "").trim().length > 0);
   const showProcessingMessage = isJobRunning && !hasTranscriptionText;
   const transcriptionFailed = result?.status === "failed";
-  const isNewExperienceEnabled = (import.meta.env.VITE_FEATURE_AUDIO_TRANSCRIPTION_V2 ?? "true") !== "false";
   const processingStatusMessage =
     result?.status === "queued"
       ? "Aguardando a alquimia começar..."
@@ -121,13 +131,13 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
 
     setResult((previous) => {
       const baseLanguage = previous?.language ?? lastRequestedLanguage.current ?? language;
+      const rawDuration = (liveTranscription as Record<string, unknown>)?.["duration_seconds"];
+      const durationSeconds = typeof rawDuration === "number" ? Number(rawDuration) : previous?.duration;
       return {
         transcriptionId: liveTranscription.id ?? previous?.transcriptionId ?? "",
         text: liveTranscription.text ?? previous?.text ?? "",
         language: liveTranscription.language ?? baseLanguage,
-        duration: typeof liveTranscription.duration_seconds === "number"
-          ? Number(liveTranscription.duration_seconds)
-          : previous?.duration,
+        duration: durationSeconds,
         status: liveTranscription.status ?? previous?.status ?? "processing",
         error: liveTranscription.error ?? previous?.error,
       };
@@ -135,7 +145,6 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
 
     const currentStatus = liveTranscription.status ?? null;
 
-    // NOVO: controlar overlay pelo status do polling
     if (currentStatus === "queued" || currentStatus === "processing") {
       setProcessingStage("transcribe");
       setProcessingOverlayMessage(pickMessage(TRANSCRIBE_MESSAGES));
@@ -143,13 +152,17 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
     }
     if (currentStatus === "completed" || currentStatus === "failed") {
       setIsProcessing(false);
-      // Completar a barra e limpar intervalo
       setOverlayProgress(100);
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
       }
       setIsStalled(false);
+
+      if (currentStatus === "failed") {
+        const errorMessage = liveTranscription.error ?? "Não foi possível gerar a transcrição.";
+        toast.error("Falha na transcrição", { description: errorMessage });
+      }
     }
 
     if (currentStatus && lastStatusReportedRef.current !== currentStatus) {
@@ -175,44 +188,94 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
     }
   }, [language, liveTranscription, traceId]);
 
+  const handleAudioFileSelection = useCallback(
+    (file: File | null, source: "upload" | "recording") => {
+      if (!file) {
+        setSelectedFile(null);
+        setFileMetadata(null);
+        setValidationMessage("Nenhum arquivo selecionado");
+        return false;
+      }
+
+      const validation = validateAudio(file);
+
+      if (!validation.isValid) {
+        setSelectedFile(null);
+        setFileMetadata(null);
+        const errorMessage = validation.error?.message ?? "Falha ao validar o arquivo selecionado";
+        setValidationMessage(errorMessage);
+        const failureTraceId = crypto.randomUUID();
+        setTraceId(failureTraceId);
+        Observability.trackEvent("audio_transcription_validation_failure", {
+          traceId: failureTraceId,
+          reason: validation.error?.code ?? "unknown",
+          message: errorMessage,
+          mimeType: file.type ?? "",
+          name: file.name ?? null,
+          sizeBytes: file.size ?? null,
+          source,
+        });
+        toast.error("Arquivo inválido", { description: errorMessage });
+        return false;
+      }
+
+      const metadata = validation.metadata ?? null;
+      setValidationMessage(null);
+      setSelectedFile(file);
+      setFileMetadata(metadata);
+      const newTraceId = crypto.randomUUID();
+      setTraceId(newTraceId);
+      Observability.trackEvent("audio_transcription_file_ready", {
+        traceId: newTraceId,
+        mimeType: metadata?.mimeType || file.type || "",
+        extension: metadata?.extension,
+        sizeMB: metadata?.sizeMB ?? file.size / (1024 * 1024),
+        source,
+      });
+
+      if (source === "recording") {
+        toast.success("Gravação pronta", {
+          description: "Áudio capturado. Revise e clique em Transcrever para continuar.",
+        });
+      }
+
+      return true;
+    },
+    [validateAudio],
+  );
+
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] ?? null;
-    const validation = validateAudio(file);
-
-    if (!validation.isValid) {
-      setSelectedFile(null);
-      setFileMetadata(null);
-      const errorMessage = validation.error?.message ?? "Falha ao validar o arquivo selecionado";
-      setValidationMessage(errorMessage);
-      const failureTraceId = crypto.randomUUID();
-      setTraceId(failureTraceId);
-      Observability.trackEvent("audio_transcription_validation_failure", {
-        traceId: failureTraceId,
-        reason: validation.error?.code ?? "unknown",
-        message: errorMessage,
-        mimeType: file?.type ?? "",
-        name: file?.name ?? null,
-        sizeBytes: file?.size ?? null,
-      });
-      toast.error("Arquivo inválido", { description: errorMessage });
-      if (event.target) {
-        event.target.value = "";
-      }
-      return;
+    handleAudioFileSelection(file, "upload");
+    if (event.target) {
+      event.target.value = "";
     }
-
-    setValidationMessage(null);
-    setSelectedFile(file);
-    setFileMetadata(validation.metadata ?? null);
-    const newTraceId = crypto.randomUUID();
-    setTraceId(newTraceId);
-    Observability.trackEvent("audio_transcription_file_ready", {
-      traceId: newTraceId,
-      mimeType: validation.metadata?.mimeType || file?.type || "",
-      extension: validation.metadata?.extension,
-      sizeMB: validation.metadata?.sizeMB ?? (file?.size ?? 0) / (1024 * 1024),
-    });
   };
+
+  const handleRecordingComplete = useCallback(
+    (file: File) => {
+      handleAudioFileSelection(file, "recording");
+    },
+    [handleAudioFileSelection],
+  );
+
+  const handleChangeInputMode = useCallback(
+    (mode: "upload" | "record") => {
+      setInputMode((current) => {
+        if (current === mode) {
+          return current;
+        }
+        setSelectedFile(null);
+        setFileMetadata(null);
+        setValidationMessage(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+        return mode;
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
     const shouldTransform =
@@ -241,10 +304,11 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         if (!cancelled) {
           setTransformedText(transformed ?? null);
         }
-      } catch (error: any) {
+      } catch (rawError: unknown) {
         if (!cancelled) {
+          const error = normalizeError(rawError);
           toast.error("Falha ao transformar o texto", {
-            description: error?.message ?? "Tente novamente em instantes.",
+            description: error.message ?? "Tente novamente em instantes.",
           });
         }
       } finally {
@@ -264,7 +328,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
     isTransformationPending,
     liveTranscription?.status,
     liveTranscription?.text,
-    result?.transcriptionId,
+    result,
     selectedCharacterId,
     transformationLength,
     transformationType,
@@ -342,7 +406,9 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
 
       setProcessingStage("transcribe");
       setProcessingOverlayMessage(pickMessage(TRANSCRIBE_MESSAGES));
-      // Iniciar progresso estimado até ~85% enquanto o worker processa
+      if (!isProcessing) {
+        setIsProcessing(true);
+      }
       if (progressIntervalRef.current) {
         clearInterval(progressIntervalRef.current);
         progressIntervalRef.current = null;
@@ -350,8 +416,8 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       setOverlayProgress((prev) => Math.max(prev, 20));
       progressIntervalRef.current = window.setInterval(() => {
         setOverlayProgress((prev) => {
-          const next = prev + Math.random() * 3 + 1; // incremento suave
-          return Math.min(next, 85);
+          const next = prev + Math.random() * 3 + 1;
+          return Math.min(next, 90);
         });
       }, 900);
 
@@ -364,17 +430,26 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         transformationLength: applyTransformation ? transformationLength : undefined,
       };
 
-      const response = await transcribeAudio(params);
+      let responseData: TranscriptionResult | null = null;
+      try {
+        responseData = await transcribeAudio(params);
+      } catch (error: unknown) {
+        const failureMessage =
+          error instanceof Error ? error.message : typeof error === "string" ? error : "Tente novamente";
+        const failureStatus = typeof (error as { status?: number }).status === "number"
+          ? (error as { status?: number }).status
+          : undefined;
+        const failureRequestId = typeof (error as { requestId?: string }).requestId === "string"
+          ? (error as { requestId?: string }).requestId
+          : undefined;
 
-      if (response.error) {
-        const failureMessage = response.error.message || "Tente novamente";
         toast.error("Falha na transcrição", { description: failureMessage });
         Observability.trackEvent("audio_transcription_failure", {
           ...basePayload,
           stage: "transcription",
           reason: failureMessage,
-          status: response.error.status,
-          requestId: response.error.requestId,
+          status: failureStatus,
+          requestId: failureRequestId,
         });
         Observability.trackEvent("metric.audio_transcription_success_rate", {
           traceId: activeTraceId,
@@ -384,13 +459,11 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         return;
       }
 
-      if (response.data) {
-        setResult(response.data);
+      if (responseData) {
+        setResult(responseData);
       }
 
-      const hasImmediateText = Boolean(response.data?.text);
-      // Sempre comunicamos que o job está em andamento na primeira resposta assíncrona.
-      // Isso evita a impressão de conclusão instantânea antes do polling preencher o texto.
+      const hasImmediateText = Boolean(responseData?.text);
       const toastTitle = hasImmediateText
         ? applyTransformation
           ? "Transcrição e transformação concluídas!"
@@ -402,11 +475,16 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
           : "Áudio transcrito com sucesso."
         : "Estamos traduzindo o áudio. Avisaremos quando o texto estiver disponível.";
 
+      if (hasImmediateText) {
+        setIsProcessing(false);
+        setOverlayProgress(100);
+      }
+
       toast.success(toastTitle, { description: toastDescription });
       Observability.trackEvent("audio_transcription_success", {
         ...basePayload,
         transformed: applyTransformation && hasImmediateText,
-        status: response.data?.status ?? "queued",
+        status: responseData?.status ?? "queued",
       });
       Observability.trackEvent("metric.audio_transcription_success_rate", {
         traceId: activeTraceId,
@@ -419,7 +497,8 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-    } catch (error: any) {
+    } catch (rawError: unknown) {
+      const error = normalizeError(rawError);
       toast.error("Erro ao processar", {
         description: error.message || "Tente novamente",
       });
@@ -428,7 +507,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       Observability.trackEvent("audio_transcription_failure", {
         traceId: activeTraceId,
         stage: "unexpected",
-        reason: error?.message || "unknown",
+        reason: error.message || "unknown",
       });
       Observability.trackEvent("metric.audio_transcription_success_rate", {
         traceId: activeTraceId,
@@ -473,8 +552,9 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         setOverlayProgress(100);
         setIsStalled(false);
       }
-    } catch (err: any) {
-      toast.error("Falha ao checar status", { description: err?.message ?? "Tente novamente." });
+    } catch (rawError: unknown) {
+      const error = normalizeError(rawError);
+      toast.error("Falha ao checar status", { description: error.message ?? "Tente novamente." });
     }
   };
 
@@ -499,8 +579,9 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       }
       toast.success("Processamento acionado", { description: "Vamos rechecar o status." });
       await checkTranscriptionStatus();
-    } catch (err: any) {
-      toast.error("Erro ao forçar processamento", { description: err?.message ?? "Tente novamente." });
+    } catch (rawError: unknown) {
+      const error = normalizeError(rawError);
+      toast.error("Erro ao forcar processamento", { description: error.message ?? "Tente novamente." });
     }
   };
 
@@ -521,19 +602,54 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
 
       <CosmicCard title="Transcrever Áudio" description="Converta áudio em texto e transforme com personagens">
         <div className="space-y-6">
-          <UploadSection
-            onSelectFile={handleFileSelect}
-            inputRef={fileInputRef}
-            selectedFile={selectedFile}
-            metadata={fileMetadata}
-            validationMessage={validationMessage}
-            acceptedExtensions={acceptedExtensions}
-            maxSizeMB={maxSizeMB}
-            isBusy={isUploading || isTranscribing}
-            language={language}
-            onLanguageChange={setLanguage}
-            isTranscribing={isTranscribing}
-          />
+          {inputMode === "record" ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-foreground">Gravar áudio com microfone</p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleChangeInputMode("upload")}
+                  disabled={isUploading || isTranscribing}
+                >
+                  Importar arquivo
+                </Button>
+              </div>
+              <AudioRecorder
+                onRecordingComplete={handleRecordingComplete}
+                disabled={isUploading || isTranscribing || isJobRunningDisplay}
+              />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium text-foreground">Importar arquivo de áudio</p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleChangeInputMode("record")}
+                  disabled={isUploading || isTranscribing}
+                >
+                  Usar microfone
+                </Button>
+              </div>
+              <UploadSection
+                onSelectFile={handleFileSelect}
+                inputRef={fileInputRef}
+                selectedFile={selectedFile}
+                metadata={fileMetadata}
+                validationMessage={validationMessage}
+                acceptedExtensions={acceptedExtensions}
+                maxSizeMB={maxSizeMB}
+                isBusy={isUploading || isTranscribing}
+                language={language}
+                onLanguageChange={setLanguage}
+                isTranscribing={isTranscribing}
+              />
+            </div>
+          )}
 
           <TransformationPanel
             applyTransformation={applyTransformation}
@@ -669,9 +785,10 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
                               transformationLength,
                             });
                             setTransformedText(refreshed ?? null);
-                          } catch (error: any) {
+                          } catch (rawError: unknown) {
+                            const error = normalizeError(rawError);
                             toast.error("Falha ao transformar o texto", {
-                              description: error?.message ?? "Tente novamente em instantes.",
+                              description: error.message ?? "Tente novamente em instantes.",
                             });
                           } finally {
                             setIsTransformationPending(false);
@@ -782,9 +899,10 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
                             transformationLength,
                           });
                           setTransformedText(refreshed ?? null);
-                        } catch (error: any) {
+                        } catch (rawError: unknown) {
+                          const error = normalizeError(rawError);
                           toast.error("Falha ao transformar o texto", {
-                            description: error?.message ?? "Tente novamente em instantes.",
+                            description: error.message ?? "Tente novamente em instantes.",
                           });
                         } finally {
                           setIsTransformationPending(false);

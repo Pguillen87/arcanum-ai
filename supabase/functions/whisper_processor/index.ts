@@ -13,6 +13,8 @@ const url = Deno.env.get("PROJECT_URL");
 const serviceRole = Deno.env.get("SERVICE_ROLE_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 const WORKER_TOKEN = Deno.env.get("WORKER_TOKEN");
+const FFmpegPath = Deno.env.get("FFMPEG_PATH") ?? "/usr/bin/ffmpeg";
+
 if (!url || !serviceRole) {
   console.error("Missing PROJECT_URL or SERVICE_ROLE_KEY env vars");
 }
@@ -50,6 +52,41 @@ async function transcribeWithOpenAI(blob: Blob, filename: string, mimeType?: str
   const text: string = json?.text ?? "";
   if (!text || typeof text !== "string") throw new Error("OpenAI não retornou texto válido");
   return text;
+}
+
+async function convertToWav(blob: Blob, sourceMime: string): Promise<Blob> {
+  if (!sourceMime.includes("webm") && !sourceMime.includes("ogg")) {
+    return blob;
+  }
+
+  const tmpDir = await Deno.makeTempDir({ prefix: "whisper_" });
+  const inputPath = `${tmpDir}/input.${sourceMime.includes("ogg") ? "ogg" : "webm"}`;
+  const outputPath = `${tmpDir}/output.wav`;
+  const inputBuffer = await blob.arrayBuffer();
+  await Deno.writeFile(inputPath, new Uint8Array(inputBuffer));
+
+  const process = Deno.run({
+    cmd: [FFmpegPath, "-i", inputPath, "-ar", "16000", "-ac", "1", outputPath],
+    stdout: "piped",
+    stderr: "piped",
+  });
+  const status = await process.status();
+  if (!status.success) {
+    const errorOutput = new TextDecoder().decode(await process.stderrOutput());
+    process.close();
+    await Deno.remove(inputPath).catch(() => {});
+    await Deno.remove(outputPath).catch(() => {});
+    await Deno.remove(tmpDir, { recursive: true }).catch(() => {});
+    throw new Error(`Falha ao converter audio para wav: ${errorOutput}`);
+  }
+  process.close();
+
+  const wavBytes = await Deno.readFile(outputPath);
+  await Deno.remove(inputPath).catch(() => {});
+  await Deno.remove(outputPath).catch(() => {});
+  await Deno.remove(tmpDir, { recursive: true }).catch(() => {});
+
+  return new Blob([wavBytes], { type: "audio/wav" });
 }
 
 serve(async (req: Request): Promise<Response> => {
@@ -165,8 +202,69 @@ serve(async (req: Request): Promise<Response> => {
     }
 
     const filename = asset.storage_path.split("/").pop() || "audio";
-    const blob = await downloadAsset("audio", asset.storage_path);
-    const text = await transcribeWithOpenAI(blob, filename, asset.mimetype ?? undefined, transcription.language ?? "pt");
+    let blob = await downloadAsset("audio", asset.storage_path);
+    console.log("[whisper_processor] asset baixado", {
+      transcriptionId: transcription.id,
+      assetId: asset.id,
+      sizeBytes: blob.size,
+      blobType: blob.type,
+      mimetype: asset.mimetype,
+    });
+
+    if (asset.mimetype && (asset.mimetype.includes("webm") || asset.mimetype.includes("ogg"))) {
+      try {
+        blob = await convertToWav(blob, asset.mimetype);
+        console.log("[whisper_processor] asset convertido para wav", {
+          transcriptionId: transcription.id,
+          assetId: asset.id,
+          sizeBytes: blob.size,
+          blobType: blob.type,
+        });
+      } catch (conversionError) {
+        const message = conversionError instanceof Error ? conversionError.message : String(conversionError);
+        console.error("[whisper_processor] erro na conversão", {
+          transcriptionId: transcription.id,
+          assetId: asset.id,
+          message,
+        });
+        await admin
+          .from("transcriptions")
+          .update({ status: "failed", error: message })
+          .eq("id", transcription.id);
+        return new Response(
+          JSON.stringify({ code: "CONVERSION_ERROR", message }),
+          { status: 422, headers: { "content-type": "application/json", ...corsHeaders } },
+        );
+      }
+    }
+
+    let text: string;
+    try {
+      text = await transcribeWithOpenAI(blob, filename, blob.type || asset.mimetype ?? undefined, transcription.language ?? "pt");
+    } catch (openAiError) {
+      const humanMessage = openAiError instanceof Error ? openAiError.message : String(openAiError);
+      console.error("[whisper_processor] OpenAI falhou", {
+        transcriptionId: transcription.id,
+        assetId: asset.id,
+        message: humanMessage,
+      });
+
+      await admin
+        .from("transcriptions")
+        .update({
+          status: "failed",
+          error: humanMessage,
+        })
+        .eq("id", transcription.id);
+
+      return new Response(
+        JSON.stringify({ code: "OPENAI_400", message: humanMessage }),
+        {
+          status: 422,
+          headers: { "content-type": "application/json", ...corsHeaders },
+        },
+      );
+    }
 
     // Persistir resultado
     const { error: upError } = await admin

@@ -9,6 +9,7 @@ interface DisabledReasonParams {
   applyTransformation: boolean;
   selectedCharacterId?: string;
   hasCharacters: boolean;
+  isRecording?: boolean;
 }
 
 export function getTranscribeDisabledReason({
@@ -22,6 +23,7 @@ export function getTranscribeDisabledReason({
   applyTransformation,
   selectedCharacterId,
   hasCharacters,
+  isRecording,
 }: DisabledReasonParams): string | null {
   if (isUploading) {
     return "Aguarde o término do upload do arquivo.";
@@ -37,6 +39,10 @@ export function getTranscribeDisabledReason({
 
   if (isTransforming) {
     return "O personagem está manifestando a transformação. Aguarde a conclusão antes de reenviar.";
+  }
+
+  if (isRecording) {
+    return "Finalize ou cancele a gravação para prosseguir.";
   }
 
   if (!projectId) {

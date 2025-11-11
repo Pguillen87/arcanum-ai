@@ -1,5 +1,4 @@
 import { CosmicCard } from "@/components/cosmic/CosmicCard";
-import { LoadingSpinner } from "@/components/cosmic/LoadingSpinner";
 import { Button } from "@/components/ui/button";
 import { MysticCauldronProgress } from "./MysticCauldronProgress";
 
@@ -10,6 +9,7 @@ interface TranscriptionOverlayProps {
   traceId?: string | null;
   progress?: number; // 0..100 (upload real; transcribe estimado)
   isStalled?: boolean;
+  stallDescription?: string | null;
   onRetry?: () => void; // Forçar processamento no worker
   onCheck?: () => void; // Rechecar status no PostgREST
 }
@@ -19,8 +19,21 @@ const stageTitles: Record<"upload" | "transcribe", string> = {
   transcribe: "Sussurros sendo decifrados",
 };
 
-export function TranscriptionOverlay({ visible, stage, message, traceId, progress = 0, isStalled = false, onRetry, onCheck }: TranscriptionOverlayProps) {
+export function TranscriptionOverlay({
+  visible,
+  stage,
+  message,
+  traceId,
+  progress = 0,
+  isStalled = false,
+  stallDescription,
+  onRetry,
+  onCheck,
+}: TranscriptionOverlayProps) {
   if (!visible) return null;
+
+  const showActions = isStalled && (onRetry || onCheck);
+  const statusDescription = isStalled && stallDescription ? stallDescription : message;
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/70 backdrop-blur-sm">
@@ -31,21 +44,25 @@ export function TranscriptionOverlay({ visible, stage, message, traceId, progres
       >
         <div className="space-y-4 text-center">
           <div className="flex items-center justify-center">
-            <MysticCauldronProgress progress={progress} label={message} />
+            <MysticCauldronProgress progress={progress} label={statusDescription} stalled={isStalled} />
           </div>
           {traceId && (
             <p className="text-xs text-muted-foreground">
               traceId: <span className="font-mono">{traceId}</span>
             </p>
           )}
-          {isStalled && (
-            <div className="mt-2 flex items-center justify-center gap-2">
-              <Button size="sm" variant="outline" onClick={onCheck} disabled={!onCheck}>
-                Rechecar status
-              </Button>
-              <Button size="sm" onClick={onRetry} disabled={!onRetry}>
-                Forçar processamento
-              </Button>
+          {showActions && (
+            <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
+              {onCheck && (
+                <Button size="sm" variant="outline" onClick={onCheck}>
+                  Rechecar status
+                </Button>
+              )}
+              {onRetry && (
+                <Button size="sm" onClick={onRetry}>
+                  Forçar processamento
+                </Button>
+              )}
             </div>
           )}
         </div>
