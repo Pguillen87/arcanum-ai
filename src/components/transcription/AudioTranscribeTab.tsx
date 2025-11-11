@@ -534,16 +534,14 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         (async () => {
           try {
             const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-            const edgeToken = import.meta.env.VITE_SUPABASE_EDGE_TOKEN;
-            if (SUPABASE_URL && edgeToken) {
+            if (SUPABASE_URL) {
               const session = await supabase.auth.getSession();
               const bearer = session.data.session?.access_token;
               const headers: Record<string, string> = {
                 "Content-Type": "application/json",
-                ...(edgeToken ? { "x-edge-token": edgeToken } : {}),
                 ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
               };
-              const triggerResponse = await fetch(`${SUPABASE_URL}/functions/v1/whisper_processor`, {
+              const triggerResponse = await fetch(`${SUPABASE_URL}/functions/v1/trigger_whisper`, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify({ transcriptionId: responseData.transcriptionId }),
@@ -703,14 +701,12 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       if (!result?.transcriptionId) return;
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
-      const edgeToken = import.meta.env.VITE_SUPABASE_EDGE_TOKEN;
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(edgeToken ? { 'x-edge-token': edgeToken } : {}),
       };
-      const resp = await fetch(`${SUPABASE_URL}/functions/v1/whisper_processor`, {
+      const resp = await fetch(`${SUPABASE_URL}/functions/v1/trigger_whisper`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ transcriptionId: result.transcriptionId }),
