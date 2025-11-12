@@ -560,7 +560,9 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       if (responseData) {
         setResult(responseData);
 
-        // Tentar acionar o worker imediatamente para reduzir latência do queued -> processing
+      // Tentar acionar o worker imediatamente para reduzir latência do queued -> processing
+        // Controlled by env flag VITE_FEATURE_CLIENT_TRIGGER_WORKER (set to 'false' to disable client trigger)
+        if (import.meta.env.VITE_FEATURE_CLIENT_TRIGGER_WORKER !== 'false') {
         (async () => {
           try {
             const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
@@ -636,6 +638,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
             console.warn('[AudioTranscribeTab] could not trigger whisper_processor immediately', e);
           }
         })();
+        } // end feature-flag
       }
 
       const hasImmediateText = Boolean(responseData?.text);
