@@ -8,8 +8,8 @@ const ENV_URL = import.meta.env?.VITE_SUPABASE_URL as string | undefined;
 const ENV_ANON = import.meta.env?.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 // Fallback seguro apenas para URL (fornecido pelo usuário). A chave NUNCA deve ter fallback hardcoded.
-const SUPABASE_URL = ENV_URL ?? "https://giozhrukzcqoopssegby.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = ENV_ANON;
+export const SUPABASE_URL = ENV_URL ?? "https://giozhrukzcqoopssegby.supabase.co";
+export const SUPABASE_PUBLISHABLE_KEY = ENV_ANON;
 
 // Validação em tempo de execução: sem chave anon, não inicializamos o client para evitar uso indevido.
 // Em desenvolvimento, permitimos continuar com aviso (mas algumas funcionalidades podem não funcionar)
@@ -41,13 +41,10 @@ try {
       }
     });
   } else if (import.meta.env.DEV) {
-    // Em desenvolvimento, criar cliente mock para evitar erros de importação
-    // Isso permite que a aplicação inicie mesmo sem configuração completa
-    console.warn("[Supabase] Criando cliente mock para desenvolvimento. Configure .env para funcionalidades completas.");
-    // Criar um cliente com valores dummy (não funcionará, mas não quebrará a aplicação)
+    console.warn("[Supabase] Sem VITE_SUPABASE_ANON_KEY. Recursos que dependem de PostgREST/Functions ficarão indisponíveis.");
     supabaseClient = createClient<Database>(
       SUPABASE_URL,
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0", // Chave dummy do Supabase demo
+      "placeholder-key",
       {
         auth: {
           storage: typeof window !== 'undefined' ? localStorage : undefined,
@@ -66,7 +63,7 @@ try {
   if (import.meta.env.DEV) {
     console.warn("[Supabase] Continuando com cliente mínimo devido a erro...");
     supabaseClient = createClient<Database>(
-      "https://placeholder.supabase.co",
+      SUPABASE_URL,
       "placeholder-key",
       { auth: { persistSession: false } }
     );
@@ -75,4 +72,5 @@ try {
   }
 }
 
-export const supabase = supabaseClient;
+const g: any = globalThis as any;
+export const supabase = (g.__supabase_client__ ||= supabaseClient);

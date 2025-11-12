@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase, SUPABASE_PUBLISHABLE_KEY } from '@/integrations/supabase/client';
 import { Profile } from '@/types/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Observability } from '@/lib/observability';
@@ -32,6 +32,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Load profile data
   const loadProfile = async (userId: string) => {
     try {
+      if (!SUPABASE_PUBLISHABLE_KEY) {
+        return;
+      }
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -82,7 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       
-      if (session?.user) {
+      if (session?.user && SUPABASE_PUBLISHABLE_KEY) {
         loadProfile(session.user.id);
       }
       setLoading(false);

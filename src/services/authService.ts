@@ -32,41 +32,11 @@ export const authService: AuthService = {
       // Configurar storage baseado em persistSession
       // Se persistSession = false, usar sessionStorage (limpa ao fechar navegador)
       // Se persistSession = true, usar localStorage (padrão)
-      if (!persistSession) {
-        // Criar client temporário com sessionStorage
-        const { createClient } = await import('@supabase/supabase-js');
-        const { Database } = await import('@/integrations/supabase/types');
-        const tempClient = createClient<Database>(
-          SUPABASE_URL,
-          import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-          {
-            auth: {
-              storage: window.sessionStorage,
-              persistSession: false,
-              autoRefreshToken: true,
-            }
-          }
-        );
-        const { data, error } = await tempClient.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        // Se login bem-sucedido, copiar sessão para o client principal
-        if (data?.session && !error) {
-          await supabase.auth.setSession({
-            access_token: data.session.access_token,
-            refresh_token: data.session.refresh_token,
-          });
-        }
-        return { data, error };
-      } else {
-        // Usar client padrão com localStorage
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
-        return { data, error };
-      }
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      return { data, error };
     } catch (error: any) {
       Observability.trackError(error);
       return { data: null, error };

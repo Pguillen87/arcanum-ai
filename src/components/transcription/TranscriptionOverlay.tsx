@@ -10,10 +10,11 @@ interface TranscriptionOverlayProps {
   progress?: number; // 0..100 (upload real; transcribe estimado)
   isStalled?: boolean;
   stallDescription?: string | null;
-  onRetry?: () => void; // Forçar processamento no worker
+  onRetry?: () => void;
   isRetrying?: boolean;
-  onCheck?: () => void; // Rechecar status no PostgREST
-  onClose?: () => void; // Fechar overlay
+  onClose?: () => void;
+  hasSession?: boolean;
+  onLogin?: () => void;
 }
 
 const stageTitles: Record<"upload" | "transcribe", string> = {
@@ -31,12 +32,13 @@ export function TranscriptionOverlay({
   stallDescription,
   onRetry,
   isRetrying = false,
-  onCheck,
   onClose,
+  hasSession = true,
+  onLogin,
 }: TranscriptionOverlayProps) {
   if (!visible) return null;
 
-  const showActions = isStalled && (onRetry || onCheck);
+  const showActions = isStalled && Boolean(onRetry);
   const statusDescription = isStalled && stallDescription ? stallDescription : message;
 
   return (
@@ -57,14 +59,14 @@ export function TranscriptionOverlay({
           )}
           {showActions && (
             <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
-              {onCheck && (
-                <Button size="sm" variant="outline" onClick={onCheck}>
-                  Rechecar status
+              {onRetry && hasSession && (
+                <Button size="sm" onClick={onRetry} disabled={!!isRetrying}>
+                  {isRetrying ? 'Processando...' : 'Tentar novamente'}
                 </Button>
               )}
-              {onRetry && (
-                <Button size="sm" onClick={onRetry} disabled={!!isRetrying}>
-                  {isRetrying ? 'Processando...' : 'Forçar processamento'}
+              {!hasSession && onLogin && (
+                <Button size="sm" onClick={onLogin}>
+                  Entrar
                 </Button>
               )}
               {onClose && (

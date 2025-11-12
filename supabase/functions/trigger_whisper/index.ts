@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-authorization, x-client-info, apikey, content-type",
 };
 
 const PROJECT_URL = Deno.env.get("PROJECT_URL");
@@ -21,28 +21,24 @@ serve(async (req: Request) => {
   }
 
   try {
-    const authHeader = req.headers.get("authorization");
+    const authorizationPresent = Boolean(req.headers.get("authorization"));
+    const userAgent = req.headers.get("user-agent") ?? null;
+    const remoteIp = req.headers.get("x-forwarded-for") ?? null;
+    console.log("[trigger_whisper] request_received", { method: req.method, url: req.url, authorizationPresent, userAgent, remoteIp });
+    const authHeader = req.headers.get("authorization") || req.headers.get("x-authorization");
     if (!authHeader) {
-      return new Response(JSON.stringify({ code: 'AUTH_401', message: 'Missing Authorization header' }), { status: 401, headers: { 'content-type': 'application/json', ...corsHeaders } });
+      return new Response(JSON.stringify({ code: 'AUTH_401', message: 'Missing Authorization header', hint: 'Faça login novamente e tente enviar com Authorization: Bearer' }), { status: 401, headers: { 'content-type': 'application/json', ...corsHeaders } });
     }
-
-    // Validate token by calling Supabase auth user endpoint
-    const userResp = await fetch(`${PROJECT_URL}/auth/v1/user`, {
-      method: 'GET',
-      headers: {
-        Authorization: authHeader,
-      },
-    });
-
-    if (!userResp.ok) {
-      return new Response(JSON.stringify({ code: 'AUTH_401', message: 'Invalid session' }), { status: 401, headers: { 'content-type': 'application/json', ...corsHeaders } });
+    if (!admin) {
+      return new Response(JSON.stringify({ code: 'INT_500', message: 'Admin client not configured' }), { status: 500, headers: { 'content-type': 'application/json', ...corsHeaders } });
     }
-
-    const userJson = await userResp.json();
-    const userId: string | undefined = userJson?.id;
-    if (!userId) {
-      return new Response(JSON.stringify({ code: 'AUTH_401', message: 'Invalid session' }), { status: 401, headers: { 'content-type': 'application/json', ...corsHeaders } });
+    const jwt = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const { data: userData, error: userErr } = await admin.auth.getUser(jwt);
+    if (userErr || !userData?.user?.id) {
+      console.warn("[trigger_whisper] session_validation_failed", { error: userErr?.message, hasUser: Boolean(userData?.user?.id) });
+      return new Response(JSON.stringify({ code: 'AUTH_401', message: 'Invalid session', hint: 'Sessão expirada ou inválida. Refaça o login.' }), { status: 401, headers: { 'content-type': 'application/json', ...corsHeaders } });
     }
+    const userId: string = userData.user.id;
 
     // Rate limiting (per-user) using worker_rate_limits table
     if (admin) {
@@ -60,7 +56,8 @@ serve(async (req: Request) => {
         if (existingWindow === windowStart) {
           // same window
           if ((existing.request_count ?? 0) >= RATE_LIMIT_MAX) {
-            return new Response(JSON.stringify({ code: 'RATE_LIMIT', message: 'Too many requests' }), { status: 429, headers: { 'content-type': 'application/json', ...corsHeaders } });
+            console.warn('[trigger_whisper] rate_limited', { userId, windowStart, requestCount: existing.request_count, max: RATE_LIMIT_MAX });
+            return new Response(JSON.stringify({ code: 'RATE_LIMIT', message: 'Too many requests', hint: `Tente novamente em até ${RATE_LIMIT_WINDOW_SECONDS}s` }), { status: 429, headers: { 'content-type': 'application/json', ...corsHeaders } });
           }
           // increment
           await admin.from('worker_rate_limits').upsert({ user_id: userId, window_start: windowStart, request_count: (existing.request_count ?? 0) + 1, updated_at: new Date().toISOString() }, { onConflict: 'user_id' });
@@ -76,16 +73,25 @@ serve(async (req: Request) => {
 
     // Forward the body to whisper_processor with internal worker token
     const bodyText = await req.text();
+    try {
+      const parsed = JSON.parse(bodyText || '{}');
+      console.log('[trigger_whisper] forward_payload', { userId, transcriptionId: parsed?.transcriptionId ?? null });
+    } catch {
+      console.log('[trigger_whisper] forward_payload_unparsed');
+    }
+    const forwardHeaders: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...(WORKER_TOKEN ? { 'x-edge-token': WORKER_TOKEN } : {}),
+    };
+    console.log('[trigger_whisper] forwarding', { workerTokenConfigured: Boolean(WORKER_TOKEN), includeEdgeToken: Boolean(WORKER_TOKEN) });
     const forwardResp = await fetch(`${PROJECT_URL}/functions/v1/whisper_processor`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(WORKER_TOKEN ? { 'x-edge-token': WORKER_TOKEN } : {}),
-      },
+      headers: forwardHeaders,
       body: bodyText,
     });
 
     const forwardText = await forwardResp.text();
+    console.log('[trigger_whisper] forwarded', { status: forwardResp.status });
     return new Response(forwardText, { status: forwardResp.status, headers: { 'content-type': forwardResp.headers.get('content-type') ?? 'application/json', ...corsHeaders } });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Internal error';

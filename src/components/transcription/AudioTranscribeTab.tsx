@@ -24,7 +24,7 @@ import { RuneBorder } from "@/components/ui/mystical";
 import { getTranscribeDisabledReason } from "./getTranscribeDisabledReason";
 import { AudioRecorder } from "./AudioRecorder";
 import { AudioPreviewCard } from "./player/AudioPreviewCard";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase, SUPABASE_PUBLISHABLE_KEY } from "@/integrations/supabase/client";
 import { normalizeError } from "@/utils/error";
 import { formatBytes } from "@/utils/media/formatBytes";
 
@@ -104,6 +104,20 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
   );
   const [currentAudioSource, setCurrentAudioSource] = useState<CurrentAudioSource | null>(null);
   const lastRequestedLanguage = useRef(language);
+  async function getValidAccessToken(): Promise<string | null> {
+    try {
+      const { data } = await supabase.auth.getSession();
+      let token = data?.session?.access_token ?? null;
+      if (!token) {
+        await supabase.auth.refreshSession();
+        const { data: after } = await supabase.auth.getSession();
+        token = after?.session?.access_token ?? null;
+      }
+      return token ?? null;
+    } catch {
+      return null;
+    }
+  }
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const audioUrlRef = useRef<string | null>(null);
@@ -113,7 +127,12 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
   const [overlayProgress, setOverlayProgress] = useState<number>(0);
   const [processingStartTs, setProcessingStartTs] = useState<number | null>(null);
   const [isStalled, setIsStalled] = useState<boolean>(false);
+  const [stallDescription, setStallDescription] = useState<string | null>(null);
   const [isForcing, setIsForcing] = useState<boolean>(false);
+  const isForcingRef = useRef<boolean>(false);
+  const isRecheckingRef = useRef<boolean>(false);
+  const overlaySuppressedRef = useRef<boolean>(false);
+  const [hasSession, setHasSession] = useState<boolean>(false);
 
   const isJobRunning = Boolean(result && (result.status === "queued" || result.status === "processing"));
   const isJobRunningDisplay = isJobRunning || isPolling;
@@ -146,6 +165,15 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
     return history.find((entry) => entry.transcription_id === result.transcriptionId) ?? null;
   }, [history, result?.transcriptionId]);
 
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setHasSession(Boolean(data?.session?.access_token));
+    }).catch(() => setHasSession(false));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setHasSession(Boolean(session?.access_token));
+    });
+    return () => subscription.unsubscribe();
+  }, []);
   useEffect(() => {
     if (!currentHistoryEntry) return;
     if (currentHistoryEntry.transformed_text) {
@@ -204,7 +232,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
 
     const currentStatus = liveTranscription.status ?? null;
 
-    if (currentStatus === "queued" || currentStatus === "processing") {
+    if ((currentStatus === "queued" || currentStatus === "processing") && !overlaySuppressedRef.current) {
       setProcessingStage("transcribe");
       setProcessingOverlayMessage(pickMessage(TRANSCRIBE_MESSAGES));
       setIsProcessing(true);
@@ -217,6 +245,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         progressIntervalRef.current = null;
       }
       setIsStalled(false);
+      overlaySuppressedRef.current = false;
 
       if (currentStatus === "failed") {
         const errorMessage = liveTranscription.error ?? "Nao foi possivel gerar a transcricao.";
@@ -535,12 +564,18 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         (async () => {
           try {
             const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+            const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
             if (SUPABASE_URL) {
-              const session = await supabase.auth.getSession();
-              const bearer = session.data.session?.access_token;
+              const bearer = await getValidAccessToken();
+              if (!bearer) {
+                toast.error('Sessão inválida', { description: 'Faça login novamente.' });
+                return;
+              }
               const headers: Record<string, string> = {
                 "Content-Type": "application/json",
-                ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
+                ...(ANON_KEY ? { apikey: ANON_KEY } : {}),
+                Authorization: `Bearer ${bearer}`,
+                "X-Authorization": `Bearer ${bearer}`,
               };
               const triggerResponse = await fetch(`${SUPABASE_URL}/functions/v1/trigger_whisper`, {
                 method: 'POST',
@@ -661,12 +696,25 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
     const timeoutMs = 120_000; // 2 minutos
     const id = window.setTimeout(() => {
       setIsStalled(true);
+      const noSession = !hasSession;
+      const noConfig = !SUPABASE_PUBLISHABLE_KEY;
+      if (noSession) {
+        setStallDescription("Sessão ausente. Entre para continuar.");
+      } else if (noConfig) {
+        setStallDescription("Configuração Supabase ausente. Defina VITE_SUPABASE_ANON_KEY.");
+      } else {
+        setStallDescription("Processamento demorando mais que o esperado. Tente novamente.");
+      }
     }, timeoutMs);
     return () => window.clearTimeout(id);
   }, [isProcessing, processingStartTs]);
 
   const checkTranscriptionStatus = async (): Promise<{ status: string | null } | null> => {
     try {
+      if (isRecheckingRef.current) {
+        return null;
+      }
+      isRecheckingRef.current = true;
       if (!result?.transcriptionId) return null;
       const { data, error } = await supabase
         .from("transcriptions")
@@ -674,7 +722,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         .eq("id", result.transcriptionId)
         .single();
       if (error) throw error;
-      // checkTranscriptionStatus result
+      console.debug('[recheckStatus] result', { id: data?.id, status: data?.status, hasText: Boolean(data?.text) });
       setResult((prev) => ({
         transcriptionId: data.id,
         text: typeof data.text === "string" ? data.text : prev?.text ?? "",
@@ -695,6 +743,9 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       toast.error("Falha ao checar status", { description: error.message ?? "Tente novamente." });
       return null;
     }
+    finally {
+      isRecheckingRef.current = false;
+    }
   };
 
   const handleCloseOverlay = useCallback(() => {
@@ -702,79 +753,132 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
     setOverlayProgress(0);
     setIsStalled(false);
     setTraceId(null);
+    overlaySuppressedRef.current = true;
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+      progressIntervalRef.current = null;
+    }
+    setProcessingStage("upload");
+    setProcessingOverlayMessage(UPLOAD_MESSAGES[0]);
+    setResult(null);
     // keep result if you want to show it later
   }, []);
 
   const forceWorkerProcessing = async () => {
+    // immediate synchronous lock to avoid multiple rapid calls (use ref)
+    if (isForcingRef.current) {
+      console.debug('[forceWorkerProcessing] already in progress (ref), ignoring duplicate call');
+      return { ok: false, status: 429 };
+    }
+    isForcingRef.current = true;
+    setIsForcing(true);
+
     try {
-      if (isForcing) {
-        console.debug('[forceWorkerProcessing] already in progress, ignoring duplicate call');
-        return { ok: false, status: 429 };
-      }
-      setIsForcing(true);
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+      const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
       if (!SUPABASE_URL) throw new Error('SUPABASE_URL not configured');
 
-      // get current access token from supabase client
-      const { data: _sessionData } = await supabase.auth.getSession();
-      const token = _sessionData?.session?.access_token ?? null;
+      let token = await getValidAccessToken();
+      const expiresAt = null;
+      console.debug('[forceWorkerProcessing] sending request', { transcriptionId: result?.transcriptionId, tokenExists: !!token, expiresAt });
+      if (!token) {
+        toast.error('Sessão inválida', { description: 'Faça login novamente.' });
+        isForcingRef.current = false;
+        setIsForcing(false);
+        return { ok: false, status: 401 };
+      }
 
-      console.debug('[forceWorkerProcessing] sending request', { transcriptionId: result?.transcriptionId, tokenExists: !!token });
+      const baseHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+        ...(ANON_KEY ? { apikey: ANON_KEY } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
 
       const resp = await fetch(`${SUPABASE_URL}/functions/v1/trigger_whisper`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers: baseHeaders,
         body: JSON.stringify({ transcriptionId: result?.transcriptionId }),
       });
 
       if (resp.status === 401) {
         console.warn('[forceWorkerProcessing] 401 received, trying to refresh session once');
-        // try refresh once using supabase client
         const refreshResp = await supabase.auth.refreshSession();
-        // If refreshResp isn't available, try to call token endpoint
-        if (refreshResp && refreshResp.error) {
-          console.warn('[forceWorkerProcessing] session.refresh error', refreshResp.error);
+        if (refreshResp) {
+          console.warn('[forceWorkerProcessing] session.refresh result', refreshResp);
         }
-
-        const { data: _newSessionData } = await supabase.auth.getSession();
-        const newToken = _newSessionData?.session?.access_token ?? null;
+        const newToken = await getValidAccessToken();
         if (!newToken) {
-          // nothing to do
           console.error('[forceWorkerProcessing] unable to obtain new token after refresh');
+          try {
+            const t = await resp.text();
+            toast.error('Sessão inválida', { description: t || 'Faça login novamente.' });
+          } catch {}
+          setIsStalled(true);
+          setStallDescription("Sessão inválida. Entre novamente para continuar.");
+          isForcingRef.current = false;
           setIsForcing(false);
           return { ok: false, status: 401 };
         }
 
         console.debug('[forceWorkerProcessing] retrying with new token', { tokenExists: !!newToken });
+        const retryHeaders = { ...baseHeaders, Authorization: `Bearer ${newToken}` };
         const retryResp = await fetch(`${SUPABASE_URL}/functions/v1/trigger_whisper`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${newToken}` },
+          headers: retryHeaders,
           body: JSON.stringify({ transcriptionId: result?.transcriptionId }),
         });
 
         if (!retryResp.ok) {
-          console.error('[forceWorkerProcessing] retry failed', { status: retryResp.status, text: await retryResp.text() });
+          const rt = await retryResp.text();
+          console.error('[forceWorkerProcessing] retry failed', { status: retryResp.status, text: rt });
+          if (retryResp.status === 429) {
+            toast.error('Muitas tentativas', { description: rt || 'Aguarde um pouco e tente novamente.' });
+          } else if (retryResp.status === 401) {
+            toast.error('Sessão inválida', { description: rt || 'Faça login novamente.' });
+            setIsStalled(true);
+            setStallDescription("Sessão inválida. Entre novamente para continuar.");
+          } else {
+            toast.error('Falha ao acionar processamento', { description: rt || 'Tente novamente.' });
+            setIsStalled(true);
+            setStallDescription("Falha ao acionar processamento. Tente novamente.");
+          }
+          isForcingRef.current = false;
           setIsForcing(false);
           return { ok: false, status: retryResp.status };
         }
 
+        isForcingRef.current = false;
         setIsForcing(false);
+        toast.success('Processamento reativado', { description: 'Worker acionado com sucesso.' });
         return { ok: true, status: retryResp.status };
       }
 
       if (!resp.ok) {
-        console.error('[forceWorkerProcessing] initial request failed', { status: resp.status, text: await resp.text() });
+        const rawText = await resp.text();
+        console.error('[forceWorkerProcessing] initial request failed', { status: resp.status, text: rawText });
+        if (resp.status === 429) {
+          toast.error('Muitas tentativas', { description: rawText || 'Aguarde um pouco e tente novamente.' });
+        } else if (resp.status === 401) {
+          toast.error('Sessão inválida', { description: rawText || 'Faça login novamente.' });
+          setIsStalled(true);
+          setStallDescription("Sessão inválida. Entre novamente para continuar.");
+        } else {
+          toast.error('Falha ao acionar processamento', { description: rawText || 'Tente novamente.' });
+          setIsStalled(true);
+          setStallDescription("Falha ao acionar processamento. Tente novamente.");
+        }
+        isForcingRef.current = false;
         setIsForcing(false);
         return { ok: false, status: resp.status };
       }
 
+      isForcingRef.current = false;
       setIsForcing(false);
+      toast.success('Processamento reativado', { description: 'Worker acionado com sucesso.' });
       return { ok: true, status: resp.status };
     } catch (err) {
       console.error('[forceWorkerProcessing] error', err);
+      isForcingRef.current = false;
       setIsForcing(false);
       return { ok: false, status: 500 };
     }
@@ -791,10 +895,14 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         traceId={traceId}
         progress={overlayProgress}
         isStalled={isStalled}
+        stallDescription={stallDescription ?? undefined}
         onRetry={forceWorkerProcessing}
         isRetrying={isForcing}
-        onCheck={checkTranscriptionStatus}
         onClose={handleCloseOverlay}
+        hasSession={hasSession}
+        onLogin={() => {
+          window.location.href = '/auth';
+        }}
       />
 
       <CosmicCard title="Transcrever Áudio" description="Converta áudio em texto e transforme com personagens">
@@ -1192,3 +1300,4 @@ function ResultCard({ title, subtitle, value, isLoading = false, emptyMessage }:
   );
 }
 
+  
