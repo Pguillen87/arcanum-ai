@@ -696,6 +696,14 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
     }
   };
 
+  const handleCloseOverlay = useCallback(() => {
+    setIsProcessing(false);
+    setOverlayProgress(0);
+    setIsStalled(false);
+    setTraceId(null);
+    // keep result if you want to show it later
+  }, []);
+
   const forceWorkerProcessing = async () => {
     try {
       if (!result?.transcriptionId) return;
@@ -714,11 +722,28 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       const raw = await resp.text();
       if (!resp.ok) {
         if (resp.status === 401) {
-          toast.error("Falha ao acionar processamento", {
-            description: "Token de execução inválido. Verifique a variável VITE_SUPABASE_EDGE_TOKEN.",
-          });
+          // Try refreshing session once
+          const newSession = await supabase.auth.getSession();
+          const newToken = newSession.data.session?.access_token;
+          if (newToken) {
+            const retryResp = await fetch(`${SUPABASE_URL}/functions/v1/trigger_whisper`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${newToken}` },
+              body: JSON.stringify({ transcriptionId: result.transcriptionId }),
+            });
+            const retryRaw = await retryResp.text();
+            if (!retryResp.ok) {
+              toast.error('Falha ao acionar processamento', { description: 'Sessão inválida. Faça login novamente.' });
+              setIsStalled(true);
+              return;
+            }
+          } else {
+            toast.error('Falha ao acionar processamento', { description: 'Sessão inválida. Faça login novamente.' });
+            setIsStalled(true);
+            return;
+          }
         } else {
-          toast.error("Falha ao acionar processamento", { description: raw || `HTTP ${resp.status}` });
+          toast.error('Falha ao acionar processamento', { description: raw || `HTTP ${resp.status}` });
         }
         return;
       }
@@ -743,6 +768,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         isStalled={isStalled}
         onRetry={forceWorkerProcessing}
         onCheck={checkTranscriptionStatus}
+        onClose={handleCloseOverlay}
       />
 
       <CosmicCard title="Transcrever Áudio" description="Converta áudio em texto e transforme com personagens">

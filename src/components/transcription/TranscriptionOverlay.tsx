@@ -12,6 +12,7 @@ interface TranscriptionOverlayProps {
   stallDescription?: string | null;
   onRetry?: () => void; // Forçar processamento no worker
   onCheck?: () => void; // Rechecar status no PostgREST
+  onClose?: () => void; // Fechar overlay
 }
 
 const stageTitles: Record<"upload" | "transcribe", string> = {
@@ -29,6 +30,7 @@ export function TranscriptionOverlay({
   stallDescription,
   onRetry,
   onCheck,
+  onClose,
 }: TranscriptionOverlayProps) {
   if (!visible) return null;
 
@@ -61,6 +63,11 @@ export function TranscriptionOverlay({
               {onRetry && (
                 <Button size="sm" onClick={onRetry}>
                   Forçar processamento
+                </Button>
+              )}
+              {onClose && (
+                <Button size="sm" variant="ghost" onClick={onClose}>
+                  Fechar
                 </Button>
               )}
             </div>
