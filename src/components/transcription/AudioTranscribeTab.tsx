@@ -791,7 +791,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
       const baseHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
         ...(ANON_KEY ? { apikey: ANON_KEY } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(token ? { Authorization: `Bearer ${token}`, 'X-Authorization': `Bearer ${token}` } : {}),
       };
 
       const resp = await fetch(`${SUPABASE_URL}/functions/v1/trigger_whisper`, {
@@ -821,7 +821,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         }
 
         console.debug('[forceWorkerProcessing] retrying with new token', { tokenExists: !!newToken });
-        const retryHeaders = { ...baseHeaders, Authorization: `Bearer ${newToken}` };
+        const retryHeaders = { ...baseHeaders, Authorization: `Bearer ${newToken}`, 'X-Authorization': `Bearer ${newToken}` };
         const retryResp = await fetch(`${SUPABASE_URL}/functions/v1/trigger_whisper`, {
           method: 'POST',
           headers: retryHeaders,
