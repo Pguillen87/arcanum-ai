@@ -113,6 +113,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
   const [overlayProgress, setOverlayProgress] = useState<number>(0);
   const [processingStartTs, setProcessingStartTs] = useState<number | null>(null);
   const [isStalled, setIsStalled] = useState<boolean>(false);
+  const [isForcing, setIsForcing] = useState<boolean>(false);
 
   const isJobRunning = Boolean(result && (result.status === "queued" || result.status === "processing"));
   const isJobRunningDisplay = isJobRunning || isPolling;
@@ -706,6 +707,11 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
 
   const forceWorkerProcessing = async () => {
     try {
+      if (isForcing) {
+        console.debug('[forceWorkerProcessing] already in progress, ignoring duplicate call');
+        return { ok: false, status: 429 };
+      }
+      setIsForcing(true);
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
       if (!SUPABASE_URL) throw new Error('SUPABASE_URL not configured');
 
@@ -738,6 +744,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         if (!newToken) {
           // nothing to do
           console.error('[forceWorkerProcessing] unable to obtain new token after refresh');
+          setIsForcing(false);
           return { ok: false, status: 401 };
         }
 
@@ -750,20 +757,25 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
 
         if (!retryResp.ok) {
           console.error('[forceWorkerProcessing] retry failed', { status: retryResp.status, text: await retryResp.text() });
+          setIsForcing(false);
           return { ok: false, status: retryResp.status };
         }
 
+        setIsForcing(false);
         return { ok: true, status: retryResp.status };
       }
 
       if (!resp.ok) {
         console.error('[forceWorkerProcessing] initial request failed', { status: resp.status, text: await resp.text() });
+        setIsForcing(false);
         return { ok: false, status: resp.status };
       }
 
+      setIsForcing(false);
       return { ok: true, status: resp.status };
     } catch (err) {
       console.error('[forceWorkerProcessing] error', err);
+      setIsForcing(false);
       return { ok: false, status: 500 };
     }
   };
@@ -780,6 +792,7 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
         progress={overlayProgress}
         isStalled={isStalled}
         onRetry={forceWorkerProcessing}
+        isRetrying={isForcing}
         onCheck={checkTranscriptionStatus}
         onClose={handleCloseOverlay}
       />

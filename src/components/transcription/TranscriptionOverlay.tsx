@@ -11,6 +11,7 @@ interface TranscriptionOverlayProps {
   isStalled?: boolean;
   stallDescription?: string | null;
   onRetry?: () => void; // Forçar processamento no worker
+  isRetrying?: boolean;
   onCheck?: () => void; // Rechecar status no PostgREST
   onClose?: () => void; // Fechar overlay
 }
@@ -29,6 +30,7 @@ export function TranscriptionOverlay({
   isStalled = false,
   stallDescription,
   onRetry,
+  isRetrying = false,
   onCheck,
   onClose,
 }: TranscriptionOverlayProps) {
@@ -61,8 +63,8 @@ export function TranscriptionOverlay({
                 </Button>
               )}
               {onRetry && (
-                <Button size="sm" onClick={onRetry}>
-                  Forçar processamento
+                <Button size="sm" onClick={onRetry} disabled={!!isRetrying}>
+                  {isRetrying ? 'Processando...' : 'Forçar processamento'}
                 </Button>
               )}
               {onClose && (
