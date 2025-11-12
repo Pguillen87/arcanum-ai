@@ -706,52 +706,65 @@ export function AudioTranscribeTab({ projectId }: AudioTranscribeTabProps) {
 
   const forceWorkerProcessing = async () => {
     try {
-      if (!result?.transcriptionId) return;
-      const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
       const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      };
+      if (!SUPABASE_URL) throw new Error('SUPABASE_URL not configured');
+
+      // get current access token from supabase client
+      const { data: _sessionData } = await supabase.auth.getSession();
+      const token = _sessionData?.session?.access_token ?? null;
+
+      console.debug('[forceWorkerProcessing] sending request', { transcriptionId: result?.transcriptionId, tokenExists: !!token });
+
       const resp = await fetch(`${SUPABASE_URL}/functions/v1/trigger_whisper`, {
         method: 'POST',
-        headers,
-        body: JSON.stringify({ transcriptionId: result.transcriptionId }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ transcriptionId: result?.transcriptionId }),
       });
-      const raw = await resp.text();
-      if (!resp.ok) {
-        if (resp.status === 401) {
-          // Try refreshing session once
-          const newSession = await supabase.auth.getSession();
-          const newToken = newSession.data.session?.access_token;
-          if (newToken) {
-            const retryResp = await fetch(`${SUPABASE_URL}/functions/v1/trigger_whisper`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${newToken}` },
-              body: JSON.stringify({ transcriptionId: result.transcriptionId }),
-            });
-            const retryRaw = await retryResp.text();
-            if (!retryResp.ok) {
-              toast.error('Falha ao acionar processamento', { description: 'Sessão inválida. Faça login novamente.' });
-              setIsStalled(true);
-              return;
-            }
-          } else {
-            toast.error('Falha ao acionar processamento', { description: 'Sessão inválida. Faça login novamente.' });
-            setIsStalled(true);
-            return;
-          }
-        } else {
-          toast.error('Falha ao acionar processamento', { description: raw || `HTTP ${resp.status}` });
+
+      if (resp.status === 401) {
+        console.warn('[forceWorkerProcessing] 401 received, trying to refresh session once');
+        // try refresh once using supabase client
+        const refreshResp = await supabase.auth.refreshSession();
+        // If refreshResp isn't available, try to call token endpoint
+        if (refreshResp && refreshResp.error) {
+          console.warn('[forceWorkerProcessing] session.refresh error', refreshResp.error);
         }
-        return;
+
+        const { data: _newSessionData } = await supabase.auth.getSession();
+        const newToken = _newSessionData?.session?.access_token ?? null;
+        if (!newToken) {
+          // nothing to do
+          console.error('[forceWorkerProcessing] unable to obtain new token after refresh');
+          return { ok: false, status: 401 };
+        }
+
+        console.debug('[forceWorkerProcessing] retrying with new token', { tokenExists: !!newToken });
+        const retryResp = await fetch(`${SUPABASE_URL}/functions/v1/trigger_whisper`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${newToken}` },
+          body: JSON.stringify({ transcriptionId: result?.transcriptionId }),
+        });
+
+        if (!retryResp.ok) {
+          console.error('[forceWorkerProcessing] retry failed', { status: retryResp.status, text: await retryResp.text() });
+          return { ok: false, status: retryResp.status };
+        }
+
+        return { ok: true, status: retryResp.status };
       }
-      toast.success("Processamento acionado", { description: "Vamos rechecar o status." });
-      await checkTranscriptionStatus();
-    } catch (rawError: unknown) {
-      const error = normalizeError(rawError);
-      toast.error("Erro ao forcar processamento", { description: error.message ?? "Tente novamente." });
+
+      if (!resp.ok) {
+        console.error('[forceWorkerProcessing] initial request failed', { status: resp.status, text: await resp.text() });
+        return { ok: false, status: resp.status };
+      }
+
+      return { ok: true, status: resp.status };
+    } catch (err) {
+      console.error('[forceWorkerProcessing] error', err);
+      return { ok: false, status: 500 };
     }
   };
 
