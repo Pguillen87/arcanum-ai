@@ -23,8 +23,9 @@ export function useTransformation(jobId: string | null) {
     enabled: !!jobId,
     retry: false,
     refetchOnWindowFocus: false,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Polling enquanto estiver processando
+      const data = query.state.data;
       if (data?.status === 'queued' || data?.status === 'processing') {
         return 2000; // 2 segundos
       }

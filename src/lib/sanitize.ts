@@ -8,7 +8,7 @@ export function sanitizeHTML(input: string): string {
     ],
     ALLOWED_ATTR: ['href','title','alt','src'],
     FORBID_TAGS: ['script','iframe','style'],
-    FORBID_ATTR: [/^on/i],
+    FORBID_ATTR: ['onclick','onload','onerror','onmouseover','onfocus','onblur'],
     // Ensure links are safe
     ADD_ATTR: ['rel','target'],
     // Transform target to safe combo when present

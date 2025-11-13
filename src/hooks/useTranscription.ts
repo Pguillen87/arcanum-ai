@@ -100,8 +100,9 @@ export function useTranscriptionStatus(transcriptionId: string | null) {
       return data;
     },
     enabled: !!transcriptionId,
-    refetchInterval: (data) => {
+    refetchInterval: (query) => {
       // Polling enquanto estiver processando
+      const data = query.state.data;
       if (data?.status === 'queued' || data?.status === 'processing') {
         return 2000; // 2 segundos
       }
