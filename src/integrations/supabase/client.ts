@@ -72,5 +72,5 @@ try {
   }
 }
 
-const g: any = globalThis as any;
+const g = globalThis as { __supabase_client__?: typeof supabaseClient };
 export const supabase = (g.__supabase_client__ ||= supabaseClient);

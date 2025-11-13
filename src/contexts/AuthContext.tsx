@@ -5,19 +5,20 @@ import { Profile } from '@/types/auth';
 import { useToast } from '@/hooks/use-toast';
 import { Observability } from '@/lib/observability';
 import { authService, isEmail } from '@/services/authService';
+import { toast as sonnerToast } from 'sonner';
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
   loading: boolean;
-  signInWithEmail: (email: string, password: string, persistSession?: boolean) => Promise<{ error: any }>;
-  signInWithUsername: (username: string, password: string, persistSession?: boolean) => Promise<{ error: any }>;
-  signIn: (login: string, password: string, persistSession?: boolean) => Promise<{ error: any }>; // Heurística automática
-  signInWithGoogle: (redirectTo?: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, fullName: string) => Promise<{ error: any }>;
+  signInWithEmail: (email: string, password: string, persistSession?: boolean) => Promise<{ error: Error | null }>;
+  signInWithUsername: (username: string, password: string, persistSession?: boolean) => Promise<{ error: Error | null }>;
+  signIn: (login: string, password: string, persistSession?: boolean) => Promise<{ error: Error | null }>; // Heurística automática
+  signInWithGoogle: (redirectTo?: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
-  updateProfile: (fullName: string) => Promise<{ error: any }>;
+  updateProfile: (fullName: string) => Promise<{ error: Error | null }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -96,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // Timeout de segurança: se após 5 segundos não resolver, definir loading como false
-    timeoutId = setTimeout(() => {
+    const timeoutId = setTimeout(() => {
       if (mounted) {
         console.warn("[AuthContext] Timeout ao obter sessão - continuando sem autenticação");
         setLoading(false);
@@ -125,7 +126,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           description: error.message || 'Credenciais inválidas',
           variant: 'destructive',
         });
-        return { error };
+        return { error: error as Error };
       }
 
       toast({
@@ -133,13 +134,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: 'Bem-vindo de volta.',
       });
       return { error: null };
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Erro ao fazer login',
         description: error.message || 'Erro desconhecido',
         variant: 'destructive',
       });
-      return { error };
+      return { error: error as Error };
     }
   };
 
@@ -153,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           description: error.message || 'Credenciais inválidas',
           variant: 'destructive',
         });
-        return { error };
+        return { error: error as Error };
       }
 
       toast({
@@ -161,13 +162,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: 'Bem-vindo de volta.',
       });
       return { error: null };
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Erro ao fazer login',
         description: error.message || 'Erro desconhecido',
         variant: 'destructive',
       });
-      return { error };
+      return { error: error as Error };
     }
   };
 
@@ -195,7 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // OAuth redireciona, então não mostramos toast de sucesso aqui
       return { error: null };
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Erro ao iniciar login com Google',
         description: error.message || 'Erro desconhecido',
@@ -222,12 +223,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error };
       }
 
-      toast({
-        title: 'Conta criada com sucesso!',
-        description: 'Verifique seu email para confirmar sua conta.',
+      // If user was created successfully
+      if (data.user) {
+        console.log('User created successfully:', data.user.id);
+        // The profile is automatically created by the trigger
+        // Credits and notifications will be added after applying database migrations
+      }
+
+      sonnerToast.success('Conta criada com sucesso! 🎉', {
+        description: 'Bem-vindo ao Arcanum AI!'
       });
       return { error: null };
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Erro ao criar conta',
         description: error.message || 'Erro desconhecido',
@@ -248,15 +255,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await Promise.all(keys.map((k) => caches.delete(k)));
         // LocalStorage preferences
         ['arcanoMentorPrefs','high_contrast','modo_suave','locale','mysticalLanguage','theme'].forEach((k) => {
-          try { localStorage.removeItem(k); } catch {}
+          try { localStorage.removeItem(k); } catch (e) { console.warn('Erro ao remover item do localStorage:', k, e); }
         });
-      } catch {}
+      } catch (e) { console.warn('Erro ao limpar cache/storage:', e); }
       
       toast({
         title: 'Logout realizado',
         description: 'Até logo!',
       });
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Erro ao fazer logout',
         description: error.message,
@@ -283,7 +290,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: 'Suas alterações foram salvas.',
       });
       return { error: null };
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Erro ao atualizar perfil',
         description: error.message,
@@ -314,6 +321,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {

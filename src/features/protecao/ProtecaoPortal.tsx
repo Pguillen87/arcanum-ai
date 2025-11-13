@@ -6,13 +6,13 @@ import { Shield, AlertTriangle, Settings, CheckCircle, Video, Monitor } from "lu
 import { RuneIcon } from "@/components/cosmic/RuneIcon";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ProtectionSettings } from "@/types/auth";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { TeleprompterView } from "@/components/teleprompter/TeleprompterView";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 interface ProtecaoPortalProps {
   onClose: () => void;
@@ -22,20 +22,11 @@ interface ProtecaoPortalProps {
 export const ProtecaoPortal = ({ onClose, onNavigateToOrb }: ProtecaoPortalProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [loading, setLoading] = useState(true);
   const [autoModeration, setAutoModeration] = useState(true);
   const [offensiveFilter, setOffensiveFilter] = useState(true);
   const [brandVerification, setBrandVerification] = useState(true);
   const [activeTab, setActiveTab] = useState<'teleprompter' | 'protection'>('teleprompter');
-
-  // Load user's protection settings
-  useEffect(() => {
-    if (user) {
-      loadSettings();
-    } else {
-      setLoading(false);
-    }
-  }, [user]);
+  const [loading, setLoading] = useState(true);
 
   const loadSettings = async () => {
     if (!user) return;
@@ -61,6 +52,15 @@ export const ProtecaoPortal = ({ onClose, onNavigateToOrb }: ProtecaoPortalProps
     }
   };
 
+  // Load user's protection settings
+  useEffect(() => {
+    if (user) {
+      loadSettings();
+    } else {
+      setLoading(false);
+    }
+  }, [user]); // eslint-disable-next-line react-hooks/exhaustive-deps
+
   const updateSetting = async (field: keyof ProtectionSettings, value: boolean) => {
     if (!user) return;
 
@@ -76,10 +76,10 @@ export const ProtecaoPortal = ({ onClose, onNavigateToOrb }: ProtecaoPortalProps
         title: 'Configuração atualizada',
         description: 'Suas preferências foram salvas com sucesso.',
       });
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Erro ao atualizar',
-        description: error.message,
+        description: error instanceof Error ? error.message : 'Erro desconhecido',
         variant: 'destructive',
       });
     }
@@ -88,16 +88,28 @@ export const ProtecaoPortal = ({ onClose, onNavigateToOrb }: ProtecaoPortalProps
   const handleAutoModerationChange = (checked: boolean) => {
     setAutoModeration(checked);
     updateSetting('auto_moderation', checked);
+    toast({
+      title: 'Configuração atualizada',
+      description: 'Moderação automática ' + (checked ? 'ativada' : 'desativada'),
+    });
   };
 
   const handleOffensiveFilterChange = (checked: boolean) => {
     setOffensiveFilter(checked);
     updateSetting('offensive_filter', checked);
+    toast({
+      title: 'Configuração atualizada',
+      description: 'Filtro de linguagem ofensiva ' + (checked ? 'ativado' : 'desativado'),
+    });
   };
 
   const handleBrandVerificationChange = (checked: boolean) => {
     setBrandVerification(checked);
     updateSetting('brand_verification', checked);
+    toast({
+      title: 'Configuração atualizada',
+      description: 'Verificação de marca ' + (checked ? 'ativada' : 'desativada'),
+    });
   };
 
   return (
@@ -198,7 +210,6 @@ export const ProtecaoPortal = ({ onClose, onNavigateToOrb }: ProtecaoPortalProps
                     id="auto-moderation"
                     checked={autoModeration}
                     onCheckedChange={handleAutoModerationChange}
-                    disabled={loading}
                   />
                 </div>
               </div>
@@ -218,7 +229,6 @@ export const ProtecaoPortal = ({ onClose, onNavigateToOrb }: ProtecaoPortalProps
                     id="offensive-filter"
                     checked={offensiveFilter}
                     onCheckedChange={handleOffensiveFilterChange}
-                    disabled={loading}
                   />
                 </div>
               </div>
@@ -238,7 +248,6 @@ export const ProtecaoPortal = ({ onClose, onNavigateToOrb }: ProtecaoPortalProps
                     id="brand-verification"
                     checked={brandVerification}
                     onCheckedChange={handleBrandVerificationChange}
-                    disabled={loading}
                   />
                 </div>
               </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { CosmicButton } from "@/components/cosmic/CosmicButton";
 import { CosmicCard } from "@/components/cosmic/CosmicCard";
@@ -13,12 +13,13 @@ import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { RuneIcon } from "@/components/cosmic/RuneIcon";
+import { useToast } from "@/hooks/use-toast";
 
 const passwordSchema = z
   .string()
   .min(8, "Senha deve ter no mínimo 8 caracteres")
   .regex(
-    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/,
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).*$/,
     "Senha deve conter maiúscula, minúscula e número",
   );
 
@@ -52,6 +53,7 @@ const Auth = () => {
   const [authError, setAuthError] = useState<string | null>(null);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+  const { toast } = useToast();
 
   const {
     register: registerLogin,
@@ -130,6 +132,10 @@ const Auth = () => {
         <div
           className="absolute bottom-20 right-20 w-96 h-96 rounded-full blur-3xl opacity-30 animate-cosmic-pulse animate-delay-1-5s gradient-orb"
         />
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl opacity-20 animate-cosmic-pulse"
+          style={{ background: "var(--gradient-orb)", animationDelay: "3s" }}
+        />
       </div>
 
       <div className="container mx-auto px-4 py-16 max-w-md">
@@ -203,17 +209,13 @@ const Auth = () => {
               <Tabs
                 value={isLogin ? "login" : "signup"}
                 onValueChange={(val) => setIsLogin(val === "login")}
+                className="w-full"
               >
                 <TabsList>
                   <TabsTrigger value="login">Abrir o Portal</TabsTrigger>
                   <TabsTrigger value="signup">Cadastrar</TabsTrigger>
                 </TabsList>
               </Tabs>
-            </div>
-
-            {/* Separador visual */}
-            <div className="relative">
-              <Separator />
             </div>
 
             {/* Email/Password Form */}
@@ -341,7 +343,7 @@ const Auth = () => {
                 </div>
 
                 {authError && (
-                  <p className="text-sm text-destructive mt-2" aria-live="polite">{authError}</p>
+                  <p className="text-sm text-destructive text-center" aria-live="polite">{authError}</p>
                 )}
               </form>
             ) : (
@@ -456,16 +458,19 @@ const Auth = () => {
                 </CosmicButton>
 
                 {authError && (
-                  <p className="text-sm text-destructive mt-2" aria-live="polite">{authError}</p>
+                  <p className="text-sm text-destructive text-center" aria-live="polite">{authError}</p>
                 )}
               </form>
             )}
 
-            <div className="text-center text-sm">
+            <div className="text-center text-sm pt-2">
               <button
                 type="button"
-                onClick={() => setIsLogin(!isLogin)}
-                className="text-primary hover:underline"
+                onClick={() => {
+                  setIsLogin(!isLogin);
+                  setAuthError(null);
+                }}
+                className="text-primary hover:text-primary/80 transition-colors font-medium"
               >
                 {isLogin
                   ? "Não tem uma conta? Inicie sua jornada arcana"
