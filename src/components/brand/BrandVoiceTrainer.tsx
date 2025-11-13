@@ -117,7 +117,6 @@ export function BrandVoiceTrainer({ brandProfileId, onSuccess, onCancel, migrati
     }
 
     try {
-      // Validar com Zod
       const validatedParams = TrainBrandVoiceRequestSchema.parse({
         brandProfileId: brandProfileId || undefined,
         name: name.trim(),
@@ -128,7 +127,7 @@ export function BrandVoiceTrainer({ brandProfileId, onSuccess, onCancel, migrati
         modelName: modelProvider === 'anthropic' ? 'claude-3-5-sonnet-20241022' : 'gpt-4o',
       });
 
-      const result = await trainBrandVoice(validatedParams as TrainBrandVoiceParams);
+      const result = await trainBrandVoice(validatedParams);
       
       if (result) {
         toast.success('Voz treinada com sucesso!', {

@@ -99,7 +99,7 @@ export const brandVoiceService: BrandVoiceService = {
 
       const { data, error } = await supabase
         .from('profiles')
-        .update({ brand_voice: brandVoice })
+        .update({ brand_voice: brandVoice as any })
         .eq('id', userId)
         .select('brand_voice')
         .single();
