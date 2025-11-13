@@ -242,7 +242,7 @@ export const brandVoiceService: BrandVoiceService = {
       if (error) {
         // Tratar erro 404 (tabela não existe) como estado válido
         const isTableNotFound = 
-          error.status === 404 || 
+          error.code === 'PGRST116' || 
           error.message?.includes('relation "brand_profiles" does not exist') ||
           error.message?.includes('relation "public.brand_profiles" does not exist');
 
@@ -350,7 +350,6 @@ export const brandVoiceService: BrandVoiceService = {
         // Tratar erro 404 (tabela não existe) como estado válido
         const isTableNotFound = 
           error.code === 'PGRST116' || 
-          error.status === 404 || 
           error.message?.includes('relation "brand_profiles" does not exist') ||
           error.message?.includes('relation "public.brand_profiles" does not exist');
 
@@ -398,7 +397,6 @@ export const brandVoiceService: BrandVoiceService = {
         // Tratar erro 404 (tabela não existe) como estado válido
         const isTableNotFound = 
           fetchError.code === 'PGRST116' || 
-          fetchError.status === 404 || 
           fetchError.message?.includes('relation "brand_profiles" does not exist') ||
           fetchError.message?.includes('relation "public.brand_profiles" does not exist');
 
@@ -426,7 +424,6 @@ export const brandVoiceService: BrandVoiceService = {
         // Tratar erro 404 (tabela não existe) como estado válido
         const isTableNotFound = 
           unsetError.code === 'PGRST116' || 
-          unsetError.status === 404 || 
           unsetError.message?.includes('relation "brand_profiles" does not exist') ||
           unsetError.message?.includes('relation "public.brand_profiles" does not exist');
 
@@ -451,7 +448,6 @@ export const brandVoiceService: BrandVoiceService = {
         // Tratar erro 404 (tabela não existe) como estado válido
         const isTableNotFound = 
           setError.code === 'PGRST116' || 
-          setError.status === 404 || 
           setError.message?.includes('relation "brand_profiles" does not exist') ||
           setError.message?.includes('relation "public.brand_profiles" does not exist');
 
