@@ -128,54 +128,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { error };
       }
 
-      // If user was created successfully, initialize with free credits
+      // If user was created successfully
       if (data.user) {
-        console.log('User created, initializing credits for:', data.user.id);
-        
+        console.log('User created successfully:', data.user.id);
         // The profile is automatically created by the trigger
-        // Now add initial credits (100 dracmas de boas-vindas)
-        const { error: creditsError } = await supabase
-          .from('credits_ledger')
-          .insert({
-            user_id: data.user.id,
-            transaction_type: 'credit',
-            amount: 100,
-            balance_after: 100,
-            reason: 'Boas-vindas ao Arcanum AI! 🌟',
-            metadata: {
-              source: 'signup_bonus',
-              welcome: true
-            }
-          });
-
-        if (creditsError) {
-          console.error('Error adding initial credits:', creditsError);
-        } else {
-          console.log('Initial credits added successfully');
-        }
-
-        // Create welcome notification
-        const { error: notifError } = await supabase
-          .from('notifications')
-          .insert({
-            user_id: data.user.id,
-            type: 'credits_added',
-            title: 'Bem-vindo ao Arcanum AI! ✨',
-            message: 'Você recebeu 100 dracmas de boas-vindas para começar sua jornada de transmutação criativa.',
-            data: {
-              amount: 100,
-              reason: 'signup_bonus'
-            }
-          });
-
-        if (notifError) {
-          console.error('Error creating notification:', notifError);
-        }
+        // Credits and notifications will be added after applying database migrations
       }
 
-      toast({
-        title: 'Conta criada com sucesso!',
-        description: 'Verifique seu email para confirmar sua conta. Você recebeu 100 dracmas de boas-vindas!',
+      sonnerToast.success('Conta criada com sucesso! 🎉', {
+        description: 'Bem-vindo ao Arcanum AI!'
       });
       return { error: null };
     } catch (error: any) {
