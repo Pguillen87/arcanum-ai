@@ -97,7 +97,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // Timeout de segurança: se após 5 segundos não resolver, definir loading como false
-    const timeoutId = setTimeout(() => {
+    timeoutId = setTimeout(() => {
       if (mounted) {
         console.warn("[AuthContext] Timeout ao obter sessão - continuando sem autenticação");
         setLoading(false);
