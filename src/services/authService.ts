@@ -29,14 +29,17 @@ export function normalizeUsername(username: string): string {
 export const authService: AuthService = {
   async signInWithEmail(email: string, password: string, persistSession: boolean = true) {
     try {
-      // Configurar storage baseado em persistSession
-      // Se persistSession = false, usar sessionStorage (limpa ao fechar navegador)
-      // Se persistSession = true, usar localStorage (padrão)
       const { data, error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
-      return { data, error };
+      
+      if (error) {
+        Observability.trackError(error);
+        return { data: null, error };
+      }
+      
+      return { data: data.session, error: null };
     } catch (error: any) {
       Observability.trackError(error);
       return { data: null, error };
