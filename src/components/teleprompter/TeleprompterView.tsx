@@ -162,7 +162,7 @@ export function TeleprompterView({
         
         if (currentSessionId) {
           try {
-            await saveVideoRecording(currentSessionId, blob);
+            await saveVideoRecording({ sessionId: currentSessionId, videoBlob: blob });
             toast.success('Vídeo salvo com sucesso!');
           } catch (err: any) {
             toast.error('Erro ao salvar vídeo', {

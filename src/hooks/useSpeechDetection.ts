@@ -64,7 +64,7 @@ export function useSpeechDetection(config: SpeechDetectionConfig = {}): UseSpeec
       const checkVolume = () => {
         if (!analyserRef.current || !dataArrayRef.current) return;
 
-        analyserRef.current.getByteFrequencyData(dataArrayRef.current);
+        analyserRef.current.getByteFrequencyData(dataArrayRef.current as Uint8Array<ArrayBuffer>);
         
         // Calcular volume médio
         const average = dataArrayRef.current.reduce((a, b) => a + b) / dataArrayRef.current.length;

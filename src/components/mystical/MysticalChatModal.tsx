@@ -122,9 +122,6 @@ export const MysticalChatModal = ({ agent, isOpen, onClose }: MysticalChatModalP
                 "focus:outline-none focus:ring-2 focus:ring-offset-2",
                 "disabled:opacity-50 disabled:cursor-not-allowed"
               )}
-              style={{
-                focusRingColor: agent.colors.primary,
-              }}
               aria-label="Campo de mensagem"
             />
             <Button

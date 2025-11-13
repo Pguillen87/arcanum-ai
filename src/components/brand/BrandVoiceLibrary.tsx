@@ -218,7 +218,7 @@ export function BrandVoiceLibrary() {
 
       {/* Dialog para treinar/editar voz */}
       <Dialog 
-        open={showTrainer && migrationRequired !== true} 
+        open={showTrainer && !migrationRequired} 
         onOpenChange={(open) => {
           if (!open) {
             // Fechar dialog e limpar estado
@@ -231,7 +231,7 @@ export function BrandVoiceLibrary() {
                 document.body.removeAttribute('data-scroll-locked');
               }, 100);
             }
-          } else if (migrationRequired === true) {
+          } else if (migrationRequired) {
             // Não permitir abrir se migration necessária
             setShowTrainer(false);
             toast.error('Aplique a migration primeiro', {
