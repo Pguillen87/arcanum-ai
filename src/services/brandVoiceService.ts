@@ -148,7 +148,6 @@ export const brandVoiceService: BrandVoiceService = {
       if (error) {
         const isTableNotFound = 
           error.code === 'PGRST116' || 
-          error.status === 404 || 
           error.message?.includes('relation "brand_profiles" does not exist') ||
           error.message?.includes('relation "public.brand_profiles" does not exist');
 
@@ -197,7 +196,6 @@ export const brandVoiceService: BrandVoiceService = {
       if (error) {
         const isTableNotFound = 
           error.code === 'PGRST116' || 
-          error.status === 404 || 
           error.message?.includes('relation "brand_profiles" does not exist') ||
           error.message?.includes('relation "public.brand_profiles" does not exist');
 
