@@ -13,6 +13,15 @@ import {
 } from '@/schemas/character';
 import { CharacterSchema, CharacterSampleSchema } from '@/schemas/character';
 
+export type { 
+  Character, 
+  CharacterSample,
+  CreateCharacter,
+  UpdateCharacter,
+  TrainCharacterRequest,
+  TransformWithCharacterRequest 
+};
+
 export interface CharacterService {
   // CRUD básico
   listCharacters(userId: string): Promise<{ data: Character[] | null; error: any }>;

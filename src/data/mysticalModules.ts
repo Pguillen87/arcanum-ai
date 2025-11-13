@@ -1,5 +1,5 @@
-import { Wand2, Hash, Flame, Droplets, Leaf, Stars, Sparkles, Music } from "lucide-react";
-import { LucideIcon, ReactNode } from "react";
+import { Wand2, Hash, Flame, Droplets, Leaf, Stars, Sparkles, Music, LucideIcon } from "lucide-react";
+import { ReactNode } from "react";
 
 export interface MysticalModule {
   id: string;

@@ -87,6 +87,8 @@ export function useAssets(projectId: string | null) {
     isCreatingUrl: createUploadUrl.isPending,
     isUpdating: updateAssetStatus.isPending,
     isDeleting: deleteAsset.isPending,
+    uploadFile: async () => { throw new Error('Not implemented'); },
+    isUploading: false,
   };
 }
 

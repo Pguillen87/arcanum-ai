@@ -37,8 +37,6 @@ const baseCharacters: Character[] = [
     model_provider: "openai",
     model_name: "gpt-4o",
     metadata: null,
-    created_at: "",
-    updated_at: "",
   },
 ];
 

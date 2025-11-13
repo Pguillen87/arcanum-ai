@@ -16,8 +16,8 @@ export class OpenAIProvider implements AIProvider {
     const response = await this.client.chat.completions.create({
       model: params.model || 'gpt-4o',
       messages: [
-        ...(params.systemPrompt ? [{ role: 'system', content: params.systemPrompt }] : []),
-        { role: 'user', content: params.prompt }
+        ...(params.systemPrompt ? [{ role: 'system' as const, content: params.systemPrompt }] : []),
+        { role: 'user' as const, content: params.prompt }
       ],
       temperature: params.temperature ?? 0.7,
       max_tokens: params.maxTokens ?? 2000,

@@ -17,17 +17,9 @@ const queryClient = new QueryClient({
       retry: false,
       refetchOnWindowFocus: false,
       staleTime: 1000 * 60 * 5, // 5 minutos
-      onError: (error) => {
-        console.error('[QueryClient] Erro em query:', error);
-        Observability.trackError(error as Error);
-      },
     },
     mutations: {
       retry: false,
-      onError: (error) => {
-        console.error('[QueryClient] Erro em mutation:', error);
-        Observability.trackError(error as Error);
-      },
     },
   },
 });

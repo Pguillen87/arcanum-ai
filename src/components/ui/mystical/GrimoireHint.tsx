@@ -130,7 +130,7 @@ export function GrimoireHint({
       }
     }
 
-    setAdaptiveSide(computedSide);
+    setAdaptiveSide(computedSide as TooltipSide);
     setAdaptiveAlign(computedAlign);
   }, [effectivePreferredSides, side]);
 
