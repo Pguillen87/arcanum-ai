@@ -69,6 +69,12 @@ export function getMysticalMessage(type: keyof typeof mysticalMessages): string 
  * Classes CSS para efeitos místicos
  */
 export const mysticalClasses = {
+  shadows: {
+    sm: 'shadow-sm',
+    md: 'shadow-md',
+    lg: 'shadow-lg',
+    xl: 'shadow-xl',
+  },
   glow: {
     gold: 'shadow-mystical-gold',
     lilac: 'shadow-mystical-lilac',

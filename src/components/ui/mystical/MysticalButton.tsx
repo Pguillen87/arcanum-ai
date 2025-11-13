@@ -6,8 +6,10 @@ import { cn } from '@/lib/utils';
 import { mysticalClasses, getInteractionAnimation } from '@/lib/mystical-theme';
 import { forwardRef } from 'react';
 
-interface MysticalButtonProps extends ButtonProps {
-  variant?: 'gold' | 'lilac' | 'cosmic' | 'portal';
+type MysticalVariant = 'gold' | 'lilac' | 'cosmic' | 'portal';
+
+interface MysticalButtonProps extends Omit<ButtonProps, 'variant'> {
+  variant?: MysticalVariant;
   mystical?: boolean;
   showParticles?: boolean;
 }

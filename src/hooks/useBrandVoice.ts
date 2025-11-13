@@ -10,6 +10,8 @@ import {
 import { checkBrandVoiceSchema } from '@/utils/checkBrandVoiceSchema';
 import { useState, useEffect } from 'react';
 
+export type { BrandVoice, BrandProfile };
+
 export function useBrandVoice() {
   const { user } = useAuth();
   const queryClient = useQueryClient();

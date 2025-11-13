@@ -34,10 +34,7 @@ export class ErrorBoundary extends Component<Props, State> {
     
     // Rastrear erro na observabilidade
     try {
-      Observability.trackError(error, {
-        componentStack: errorInfo.componentStack,
-        errorBoundary: true,
-      });
+      Observability.trackError(error);
     } catch (err) {
       console.error('[ErrorBoundary] Erro ao rastrear erro:', err);
     }

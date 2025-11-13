@@ -12,6 +12,14 @@ import {
 } from '@/schemas/teleprompter';
 import { TeleprompterSessionSchema, CreateTeleprompterSessionSchema, UpdateTeleprompterSessionSchema } from '@/schemas/teleprompter';
 
+export type {
+  TeleprompterSession,
+  CreateTeleprompterSession,
+  UpdateTeleprompterSession,
+  TeleprompterSettings,
+  LoadProjectContent,
+};
+
 export interface TeleprompterService {
   // CRUD básico
   listSessions(userId: string): Promise<{ data: TeleprompterSession[] | null; error: any }>;

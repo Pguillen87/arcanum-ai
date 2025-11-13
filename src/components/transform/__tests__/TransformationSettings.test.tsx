@@ -17,9 +17,6 @@ describe("TransformationSettings", () => {
         onChangeLength={vi.fn()}
         tone="profissional"
         onChangeTone={vi.fn()}
-        selectedProjectId="project-1"
-        onChangeProject={vi.fn()}
-        projects={projects}
         isTransforming
       />
     );
@@ -38,9 +35,6 @@ describe("TransformationSettings", () => {
         transformationLength="medium"
         onChangeLength={vi.fn()}
         tone=""
-        selectedProjectId={undefined}
-        onChangeProject={vi.fn()}
-        projects={projects}
       />
     );
 

@@ -2,6 +2,7 @@
 import { CosmicCard } from '@/components/cosmic/CosmicCard';
 import { CosmicButton } from '@/components/cosmic/CosmicButton';
 import { SafeHtml } from '@/components/ui/SafeHtml';
+import { Label } from '@/components/ui/label';
 import { Download, Copy, Check } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';

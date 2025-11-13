@@ -12,6 +12,14 @@ import {
 } from '@/schemas/transcription';
 import { TranscriptionHistorySchema, CreateTranscriptionHistorySchema } from '@/schemas/transcription';
 
+export type {
+  TranscribeRequest,
+  TransformTranscription,
+  TranscriptionResult,
+  TranscriptionHistory,
+  CreateTranscriptionHistory,
+};
+
 export interface TranscriptionService {
   // Transcrição de áudio/vídeo
   transcribeAudio(params: TranscribeRequest): Promise<{ data: TranscriptionResult | null; error: any }>;
