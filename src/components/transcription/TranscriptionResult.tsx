@@ -51,24 +51,17 @@ export function TranscriptionResult({ history, onTransformed }: TranscriptionRes
     }
 
     try {
-      const result = await transformTranscription({
+      const transformedData = await transformTranscription({
         transcriptionId: history.transcription_id,
         characterId: selectedCharacterId,
         transformationType,
         transformationLength,
       });
 
-      if (result.error) {
-        toast.error('Erro ao transformar', {
-          description: result.error.message || 'Tente novamente',
-        });
-        return;
-      }
-
-      if (result.data) {
-        setTransformedText(result.data);
+      if (transformedData) {
+        setTransformedText(transformedData);
         if (onTransformed) {
-          onTransformed(result.data);
+          onTransformed(transformedData);
         }
         toast.success('Transformação concluída!');
       }

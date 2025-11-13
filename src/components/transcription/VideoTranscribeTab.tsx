@@ -24,7 +24,7 @@ interface VideoTranscribeTabProps {
 export function VideoTranscribeTab({ projectId }: VideoTranscribeTabProps) {
   const { transcribeAudio, isTranscribing } = useTranscription();
   const { characters, defaultCharacter } = useCharacters();
-  const { uploadFile, isUploading } = useAssets();
+  const { uploadFile, isUploading } = useAssets(projectId || null);
   
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [language, setLanguage] = useState('pt');
