@@ -137,12 +137,6 @@ export const assetsService: AssetsService = {
           cacheControl: '3600',
           upsert: false,
           contentType: uploadableFile.type || undefined,
-          onUploadProgress: (progress) => {
-            if (onProgress) {
-              const percent = (progress.loaded / progress.total) * 100;
-              onProgress(percent);
-            }
-          },
         });
 
       if (uploadError) {
