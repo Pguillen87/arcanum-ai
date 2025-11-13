@@ -71,24 +71,17 @@ export function VideoTranscribeTab({ projectId }: VideoTranscribeTabProps) {
       // 1. Upload do arquivo
       toast.info('Fazendo upload do arquivo...', { id: 'upload' });
       
-      const uploadResult = await uploadFile({
+      const uploadedAsset = await uploadFile({
         file: selectedFile,
         projectId: projectId,
         type: 'video',
       });
 
-      if (uploadResult.error || !uploadResult.data) {
-        toast.error('Erro ao fazer upload', {
-          description: uploadResult.error?.message || 'Tente novamente',
-        });
-        return;
-      }
-
       toast.success('Upload concluído! Iniciando transcrição...', { id: 'upload' });
 
       // 2. Transcrever (Whisper também funciona com vídeo)
       const params: TranscribeRequest = {
-        assetId: uploadResult.data.id,
+        assetId: uploadedAsset.id,
         language,
         characterId: applyTransformation ? selectedCharacterId : undefined,
         applyTransformation,
@@ -96,17 +89,10 @@ export function VideoTranscribeTab({ projectId }: VideoTranscribeTabProps) {
         transformationLength: applyTransformation ? transformationLength : undefined,
       };
 
-      const result = await transcribeAudio(params);
-
-      if (result.error) {
-        toast.error('Erro ao transcrever', {
-          description: result.error.message || 'Tente novamente',
-        });
-        return;
-      }
+      const transcriptionResult = await transcribeAudio(params);
 
       toast.success('Transcrição concluída!', {
-        description: applyTransformation && result.data?.text
+        description: applyTransformation && transcriptionResult.text
           ? 'Texto transformado com sucesso'
           : 'Vídeo transcrito com sucesso',
       });

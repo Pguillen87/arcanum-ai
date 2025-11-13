@@ -212,7 +212,7 @@ export const assetsService: AssetsService = {
         data: {
           url: signedData.signedUrl,
           path: signedData.path,
-          expiresAt: signedData.expiresIn ? Date.now() + signedData.expiresIn * 1000 : Date.now() + 3600000,
+          expiresAt: Date.now() + 3600000, // 1 hour
         },
         error: null,
       };

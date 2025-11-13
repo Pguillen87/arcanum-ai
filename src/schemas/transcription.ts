@@ -34,6 +34,8 @@ export const TranscriptionHistorySchema = z.object({
   status: z.enum(['processing', 'completed', 'failed']).default('completed'),
   error_message: z.string().max(1000).transform(sanitizeString).optional().nullable(),
   cost_dracmas: z.number().int().min(0).default(0),
+  created_at: z.string().optional(), // Add created_at field
+  metadata: z.any().optional(),
 });
 
 export type TranscriptionHistory = z.infer<typeof TranscriptionHistorySchema>;
@@ -69,7 +71,10 @@ export const AudioVideoUploadSchema = z.object({
   file: z.instanceof(File)
     .refine((file) => file.size <= 100 * 1024 * 1024, 'Arquivo deve ter no máximo 100MB')
     .refine(
-      (file) => [...AUDIO_MIME_TYPES, ...VIDEO_MIME_TYPES].includes(file.type),
+      (file) => {
+        const allTypes = [...AUDIO_MIME_TYPES, ...VIDEO_MIME_TYPES];
+        return allTypes.some(type => file.type === type || file.type.includes(type.split('/')[1]));
+      },
       'Formato de arquivo não suportado'
     ),
   projectId: z.string().uuid().optional(),

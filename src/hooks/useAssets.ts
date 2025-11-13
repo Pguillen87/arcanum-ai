@@ -77,6 +77,34 @@ export function useAssets(projectId: string | null) {
     },
   });
 
+  const uploadFileMutation = useMutation({
+    mutationFn: async (params: { file: File; projectId?: string; type: 'audio' | 'video' | 'text' }) => {
+      const { data, error } = await assetsService.uploadFile({
+        projectId: params.projectId || projectId || '',
+        type: params.type,
+        file: params.file,
+      });
+      if (error) throw error;
+      return data!;
+    },
+    onSuccess: (newAsset) => {
+      queryClient.setQueryData<Asset[]>(['assets', projectId], (old) => {
+        return [...(old || []), newAsset];
+      });
+      toast({
+        title: 'Upload concluído!',
+        description: 'Arquivo enviado com sucesso.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Erro no upload',
+        description: error.message || 'Não foi possível fazer upload do arquivo',
+        variant: 'destructive',
+      });
+    },
+  });
+
   return {
     assets: assets || [],
     isLoading,
@@ -87,8 +115,8 @@ export function useAssets(projectId: string | null) {
     isCreatingUrl: createUploadUrl.isPending,
     isUpdating: updateAssetStatus.isPending,
     isDeleting: deleteAsset.isPending,
-    uploadFile: async () => { throw new Error('Not implemented'); },
-    isUploading: false,
+    uploadFile: uploadFileMutation.mutateAsync,
+    isUploading: uploadFileMutation.isPending,
   };
 }
 
